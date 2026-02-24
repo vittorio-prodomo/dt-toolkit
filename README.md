@@ -67,11 +67,27 @@ dt-train -C training_config.yaml
 # Import from disk
 dt-import-fo disk datasets/my_ds my_dataset -f yolo
 
+# Import from disk and enrich labels with computed attributes
+dt-import-fo disk datasets/my_ds my_dataset --enrich
+
 # Import from CVAT
 dt-import-fo cvat my_dataset -P "My CVAT Project"
 
 # Export to disk
 dt-export-fo my_dataset out/exported -t yolo -s train val
+```
+
+### Enrich a FiftyOne dataset
+
+```bash
+# Compute label areas (auto-detects label fields)
+dt-enrich my_dataset
+
+# Target specific label fields
+dt-enrich my_dataset -l detections -l segmentations
+
+# Adjust batch size for large mask-heavy datasets
+dt-enrich my_dataset -b 500
 ```
 
 ### Quick reference
@@ -86,3 +102,4 @@ dt-export-fo my_dataset out/exported -t yolo -s train val
 | `dt-train` | Train a model (auto-detected backend) | `.[train]` / `.[train-detectron2]` / `.[train-rfdetr]` |
 | `dt-import-fo` | Import a dataset into FiftyOne (disk or CVAT) | `.[fiftyone]` |
 | `dt-export-fo` | Export a FiftyOne dataset to disk | `.[fiftyone]` |
+| `dt-enrich` | Compute derived label attributes (area) | `.[fiftyone]` |
