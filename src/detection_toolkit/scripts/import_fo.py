@@ -28,6 +28,10 @@ def _add_shared_opts(p):
         metavar="PX",
         help="Thumbnail height in pixels (default: 256).",
     )
+    p.add_argument(
+        "--enrich", "-E", action="store_true",
+        help="Compute additional label attributes (area) after import.",
+    )
     verbosity = p.add_mutually_exclusive_group()
     verbosity.add_argument("--quiet", "-q", action="store_true",
                            help="Suppress informational output.")
@@ -222,6 +226,11 @@ def main(argv=None):
             cvat_password=args.password,
             cvat_organization=args.organization,
         )
+
+    if args.enrich:
+        from detection_toolkit.enrich import DatasetEnricher
+        enricher = DatasetEnricher(verbose=not args.quiet)
+        enricher.enrich(dataset, interactive=False)
 
     print("FiftyOne import complete:")
     print(f"  Dataset:  {dataset.name}")
