@@ -239,9 +239,10 @@ class DatasetEnricher:
                 all_bboxes, widths, heights
             )
 
-        all_px, all_rel = zip(*all_areas) if all_areas else ([], [])
-        dataset.set_values(f"{prefix}.area_px", list(all_px))
-        dataset.set_values(f"{prefix}.area_rel", list(all_rel))
+        all_px = [[px for px, _ in sample] for sample in all_areas]
+        all_rel = [[rel for _, rel in sample] for sample in all_areas]
+        dataset.set_values(f"{prefix}.area_px", all_px)
+        dataset.set_values(f"{prefix}.area_rel", all_rel)
 
     def _compute_detection_areas_bbox_only(
         self,
