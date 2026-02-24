@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import fiftyone as fo
 import fiftyone.core.labels as fol
+from tqdm import tqdm
 
 from .area import bbox_area, mask_area, polyline_area
 
@@ -225,7 +226,13 @@ class DatasetEnricher:
         """Fast path: no masks, pure bbox arithmetic."""
         results = []
         total = 0
-        for bboxes, w, h in zip(all_bboxes, widths, heights):
+        items = zip(all_bboxes, widths, heights)
+        if self.verbose:
+            items = tqdm(
+                items, total=len(all_bboxes),
+                desc="Computing bbox areas", unit="sample",
+            )
+        for bboxes, w, h in items:
             sample_areas = []
             if bboxes and w is not None and h is not None:
                 for bb in bboxes:
@@ -250,7 +257,14 @@ class DatasetEnricher:
         all_results = []
         total = 0
 
-        for start in range(0, n, batch_size):
+        batch_iter = range(0, n, batch_size)
+        if self.verbose:
+            batch_iter = tqdm(
+                batch_iter, total=(n + batch_size - 1) // batch_size,
+                desc="Computing mask-aware areas", unit="batch",
+            )
+
+        for start in batch_iter:
             end = min(start + batch_size, n)
             batch_view = dataset.skip(start).limit(end - start)
             batch_masks = batch_view.values(f"{prefix}.mask")
@@ -271,11 +285,6 @@ class DatasetEnricher:
                             sample_areas.append(bbox_area(bb, w, h))
                         total += 1
                 all_results.append(sample_areas)
-
-            if self.verbose and n > batch_size:
-                logger.info(
-                    "  Processed %d / %d samples ...", end, n
-                )
 
         logger.info(
             "Computed areas for %d detections (batched, mask-aware)", total
@@ -301,7 +310,14 @@ class DatasetEnricher:
         all_rel = []
         total = 0
 
-        for pts_list, w, h in zip(all_points, widths, heights):
+        items = zip(all_points, widths, heights)
+        if self.verbose:
+            items = tqdm(
+                items, total=len(all_points),
+                desc="Computing polygon areas", unit="sample",
+            )
+
+        for pts_list, w, h in items:
             sample_px = []
             sample_rel = []
             if pts_list and w is not None and h is not None:
