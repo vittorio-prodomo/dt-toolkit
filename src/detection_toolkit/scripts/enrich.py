@@ -67,14 +67,17 @@ def main(argv=None):
     from detection_toolkit.enrich import DatasetEnricher
 
     enricher = DatasetEnricher(verbose=not args.quiet)
-    enricher.enrich(
+    enriched = enricher.enrich(
         dataset,
         label_fields=args.label_field,
         batch_size=args.batch_size,
         interactive=True,
     )
 
-    print("Enrichment complete.")
+    if enriched:
+        print("Enrichment complete.")
+    else:
+        print("Enrichment aborted.")
 
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@ class DatasetEnricher:
         label_fields: Optional[List[str]] = None,
         batch_size: int = 1000,
         interactive: bool = True,
-    ) -> None:
+    ) -> bool:
         """Compute ``area_px`` and ``area_rel`` for every label.
 
         Args:
@@ -93,6 +93,9 @@ class DatasetEnricher:
             batch_size: Batch size for mask processing.
             interactive: If *True*, prompt the user when multiple fields
                 are found or when a field is already enriched.
+
+        Returns:
+            *True* if at least one field was enriched, *False* otherwise.
         """
         # Ensure metadata is populated
         if dataset.exists("metadata").count() < len(dataset):
@@ -103,8 +106,9 @@ class DatasetEnricher:
         fields = label_fields or self._resolve_fields(dataset, interactive)
         if not fields:
             logger.warning("No label fields to enrich.")
-            return
+            return False
 
+        enriched_any = False
         for field in fields:
             # Idempotency check
             if _field_is_enriched(dataset, field):
@@ -122,6 +126,9 @@ class DatasetEnricher:
                     )
 
             self._enrich_field(dataset, field, batch_size)
+            enriched_any = True
+
+        return enriched_any
 
     # ------------------------------------------------------------------
     # Field resolution
