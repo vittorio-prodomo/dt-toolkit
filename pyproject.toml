@@ -70,6 +70,7 @@ dt-merge = "detection_toolkit.scripts.merge:main"
 dt-train = "detection_toolkit.scripts.train:main"
 dt-import-fo = "detection_toolkit.scripts.import_fo:main"
 dt-export-fo = "detection_toolkit.scripts.export_fo:main"
+dt-enrich = "detection_toolkit.scripts.enrich:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
