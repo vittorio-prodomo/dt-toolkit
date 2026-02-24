@@ -32,39 +32,58 @@ def parse_args(argv=None):
     )
 
     # Core tiling params
-    p.add_argument("--tile-size", "-t", type=int, default=640, metavar="PX")
+    p.add_argument("--tile-size", "-t", type=int, default=640, metavar="PX",
+                   help="Tile width and height in pixels (default: 640).")
     p.add_argument("--overlap", "-o", type=float, default=0.0, metavar="F",
-                   help="Overlap fraction 0.0-1.0 (default: 0.0).")
-    p.add_argument("--min-area-ratio", "-m", type=float, default=0.1, metavar="F")
-    p.add_argument("--max-area-ratio", "-M", type=float, default=1.0, metavar="F")
+                   help="Overlap fraction between adjacent tiles, 0.0-1.0 (default: 0.0).")
+    p.add_argument("--min-area-ratio", "-m", type=float, default=0.1, metavar="F",
+                   help="Discard annotations whose clipped area is below this fraction "
+                        "of their original area (default: 0.1).")
+    p.add_argument("--max-area-ratio", "-M", type=float, default=1.0, metavar="F",
+                   help="Discard annotations whose clipped area exceeds this fraction "
+                        "of their original area (default: 1.0).")
 
     # Edge handling
-    p.add_argument("--edge-behavior", "-e", choices=["crop", "padding"], default="crop")
+    p.add_argument("--edge-behavior", "-e", choices=["crop", "padding"], default="crop",
+                   help="How to handle tiles at image borders: 'crop' discards "
+                        "partial tiles, 'padding' pads them (default: crop).")
     p.add_argument("--padding-color", "-C", type=int, nargs=3, default=[153, 153, 153],
-                   metavar=("R", "G", "B"))
+                   metavar=("R", "G", "B"),
+                   help="RGB fill color when edge-behavior is 'padding' "
+                        "(default: 153 153 153).")
 
     # Polygon processing
-    p.add_argument("--densify-factor", "-d", type=float, default=0.5, metavar="F")
-    p.add_argument("--smoothing-tolerance", "-s", type=float, default=0.1, metavar="F")
+    p.add_argument("--densify-factor", "-d", type=float, default=0.5, metavar="F",
+                   help="Add intermediate polygon vertices every tile_size*factor "
+                        "pixels to improve clipping accuracy (default: 0.5).")
+    p.add_argument("--smoothing-tolerance", "-s", type=float, default=0.1, metavar="F",
+                   help="Simplify clipped polygons with this tolerance in pixels "
+                        "to reduce point count (default: 0.1).")
 
     # Negative sampling
     p.add_argument("--negative-ratio", "-n", type=float, default=0.1, metavar="F",
-                   help="Ratio of negative to positive tiles (-1 = keep all).")
-    p.add_argument("--random-seed", "-r", type=int, default=42, metavar="N")
+                   help="Ratio of negative (empty) to positive tiles to keep; "
+                        "-1 keeps all negatives (default: 0.1).")
+    p.add_argument("--random-seed", "-r", type=int, default=42, metavar="N",
+                   help="Random seed for negative tile sampling (default: 42).")
     p.add_argument("--fraction", "-F", type=float, default=None, metavar="F",
-                   help="Process only a fraction of images (for testing).")
+                   help="Process only this fraction of source images, useful "
+                        "for quick testing (default: all).")
 
     # Image compression
     p.add_argument("--compression", "-Q", type=int, default=90, metavar="N",
-                   help="JPEG quality 0-100.")
+                   help="JPEG quality 0-100 for saved tiles (default: 90).")
 
     # Parallelism
-    p.add_argument("--max-processes", "-P", type=int, default=None, metavar="N")
+    p.add_argument("--max-processes", "-P", type=int, default=None, metavar="N",
+                   help="Max parallel worker processes (default: CPU count).")
 
     # Format
-    p.add_argument("--format", "-f", choices=["yolo", "coco"], default=None)
+    p.add_argument("--format", "-f", choices=["yolo", "coco"], default=None,
+                   help="Force dataset format (auto-detected if omitted).")
 
-    p.add_argument("--quiet", "-q", action="store_true")
+    p.add_argument("--quiet", "-q", action="store_true",
+                   help="Suppress progress output.")
     return p.parse_args(argv)
 
 
