@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "detection-toolkit"
+version = "0.1.0"
+description = "Modular building blocks for object-detection & instance-segmentation workflows."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Vittorio Prodomo" },
+]
+keywords = [
+    "object-detection",
+    "instance-segmentation",
+    "dataset-management",
+    "tiling",
+    "computer-vision",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "cocoyolo>=0.1.0",
+    "numpy",
+    "opencv-python-headless>=4.5",
+    "pycocotools>=2.0",
+    "PyYAML>=5.0",
+    "rasterio>=1.3",
+    "shapely>=2.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+fiftyone = [
+    "fiftyone>=0.23",
+]
+train = [
+    "ultralytics>=8.0",
+]
+train-detectron2 = [
+    "detectron2",
+]
+train-rfdetr = [
+    "rfdetr",
+]
+all = [
+    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr]",
+]
+
+[project.scripts]
+dt-ingest = "detection_toolkit.scripts.ingest:main"
+dt-convert = "detection_toolkit.scripts.convert:main"
+dt-tile = "detection_toolkit.scripts.tile:main"
+dt-filter = "detection_toolkit.scripts.filter:main"
+dt-merge = "detection_toolkit.scripts.merge:main"
+dt-train = "detection_toolkit.scripts.train:main"
+dt-import-fo = "detection_toolkit.scripts.import_fo:main"
+dt-export-fo = "detection_toolkit.scripts.export_fo:main"
+
+[project.urls]
+Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
+Issues = "https://github.com/vittorio-prodomo/detection-toolkit/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/detection_toolkit"]
