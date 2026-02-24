@@ -27,12 +27,31 @@ def _get_label_fields(dataset: fo.Dataset) -> List[str]:
 
 
 def _field_is_enriched(dataset: fo.Dataset, label_field: str) -> bool:
-    """Check whether *label_field* already has ``area_px`` in its schema."""
+    """Check whether labels in *label_field* already have ``area_px``.
+
+    Inspects the schema first, then falls back to checking the first
+    non-empty sample's labels (dynamic attributes may not appear in the
+    schema in all FiftyOne versions).
+    """
+    container = _field_container_key(dataset, label_field)
+    path = f"{label_field}.{container}.area_px"
+
+    # Fast path: check the schema
     flat = dataset.get_field_schema(flat=True)
-    return any(
-        key.startswith(f"{label_field}.") and key.endswith(".area_px")
-        for key in flat
-    )
+    if any(key == path for key in flat):
+        return True
+
+    # Fallback: inspect the first sample that has labels
+    view = dataset.exists(f"{label_field}.{container}")
+    if not view:
+        return False
+    first = view.first()
+    if first is None:
+        return False
+    labels = getattr(getattr(first, label_field, None), container, [])
+    if not labels:
+        return False
+    return getattr(labels[0], "area_px", None) is not None
 
 
 def _field_container_key(dataset: fo.Dataset, label_field: str) -> str:
