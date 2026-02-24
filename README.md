@@ -77,6 +77,29 @@ dt-import-fo cvat my_dataset -P "My CVAT Project"
 dt-export-fo my_dataset out/exported -t yolo -s train val
 ```
 
+### CVAT task management
+
+```bash
+# Split a task's single job into two jobs at frame 250
+dt-cvat split --task 41 --cuts 250
+
+# Split into 3 roughly equal jobs
+dt-cvat split --task 41 --equal 3
+
+# Multiple custom cut points (produces 3 jobs: 0-99, 100-299, 300-end)
+dt-cvat split --task 41 --cuts 100 300
+
+# Split a specific job in a multi-job task
+dt-cvat split --task 41 --job 54 --cuts 250
+
+# Preview the split without creating anything
+dt-cvat split --task 41 --cuts 250 --dry-run
+```
+
+CVAT credentials are read from `DT_CVAT_*` env vars in `.env`
+(see `.env.example`) or passed via `--url`, `--username`, `--password`,
+`--organization`.
+
 ### Enrich a FiftyOne dataset
 
 ```bash
@@ -103,3 +126,4 @@ dt-enrich my_dataset -b 500
 | `dt-import-fo` | Import a dataset into FiftyOne (disk or CVAT) | `.[fiftyone]` |
 | `dt-export-fo` | Export a FiftyOne dataset to disk | `.[fiftyone]` |
 | `dt-enrich` | Compute derived label attributes (area) | `.[fiftyone]` |
+| `dt-cvat` | CVAT task management (split jobs) | `cvat-sdk` |
