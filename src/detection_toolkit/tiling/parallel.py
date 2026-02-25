@@ -125,6 +125,48 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
     return (positive, negative)
 
 
+def tile_single_image(args: Tuple) -> int:
+    """Tile one image without annotations.
+
+    Designed for :func:`ProcessPoolExecutor.map`.
+
+    Args:
+        args: ``(img_path, output_dir, tile_prefix, pad_width, config_dict)``
+
+    Returns:
+        Number of tiles written.
+    """
+    import rasterio
+
+    from .config import TilingConfig
+    from .geometry import compute_tile_grid
+
+    img_path_str, output_dir_str, tile_prefix, pad_width, config_dict = args
+    img_path = Path(img_path_str)
+    output_dir = Path(output_dir_str)
+    cfg = TilingConfig.from_dict(config_dict)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+
+    try:
+        with rasterio.open(img_path) as src:
+            tiles = compute_tile_grid(
+                src.width, src.height, cfg.tile_size,
+                cfg.overlap_percent, cfg.edge_behavior,
+            )
+            for idx, (tx, ty, tw, th) in enumerate(tiles):
+                tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
+                out_path = output_dir / f"{tile_name}{img_path.suffix}"
+                _write_tile_image(src, tx, ty, tw, th, out_path, cfg, src.count)
+                count += 1
+    except Exception as exc:
+        logger.error("Failed to tile %s: %s", img_path.name, exc)
+        return 0
+
+    return count
+
+
 # ------------------------------------------------------------------
 # Internal helpers (used inside the worker)
 # ------------------------------------------------------------------

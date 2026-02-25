@@ -28,7 +28,7 @@ from .geometry import (
     polygon_area_ratio,
     to_tile_coords,
 )
-from .parallel import optimal_process_count, tile_single_yolo_image
+from .parallel import optimal_process_count, tile_single_yolo_image, tile_single_image
 
 logger = logging.getLogger(__name__)
 
