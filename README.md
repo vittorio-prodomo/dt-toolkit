@@ -35,6 +35,12 @@ dt-convert datasets/yolo_ds out/coco_ds -t coco
 ```bash
 dt-tile datasets/ds out/tiled -t 640 -o 0.3
 dt-tile datasets/ds out/tiled -c tiling_config.yaml
+
+# Tile unlabeled images (auto-detected, preserves directory structure)
+dt-tile images/ out/tiled -t 640
+
+# Tile unlabeled images with flattened output
+dt-tile images/ out/tiled -t 640 --flatten
 ```
 
 ### Filter or merge classes
