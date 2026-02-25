@@ -46,6 +46,7 @@ class TilingConfig:
     max_processes: Optional[int] = None
     random_seed: Optional[int] = None
     fraction: Optional[float] = None
+    flatten: bool = False
 
     def __post_init__(self) -> None:
         if self.tile_size <= 0:
