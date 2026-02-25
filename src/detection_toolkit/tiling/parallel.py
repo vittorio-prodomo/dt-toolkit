@@ -6,6 +6,7 @@ that can be dispatched to a :class:`~concurrent.futures.ProcessPoolExecutor`.
 
 import logging
 import os
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -46,6 +47,7 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
     """
     import rasterio
     from rasterio.windows import Window
+    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
     from .config import TilingConfig
     from .geometry import (
@@ -137,6 +139,7 @@ def tile_single_image(args: Tuple) -> int:
         Number of tiles written.
     """
     import rasterio
+    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
     from .config import TilingConfig
     from .geometry import compute_tile_grid

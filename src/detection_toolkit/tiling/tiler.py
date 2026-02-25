@@ -594,8 +594,10 @@ class DatasetTiler:
         out_path: Path,
     ) -> None:
         """Read a tile region and write it out."""
+        import warnings
         import rasterio
         from rasterio.windows import Window
+        warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
         with rasterio.open(src_path) as src:
             read_w = min(tw, src.width - tx)
