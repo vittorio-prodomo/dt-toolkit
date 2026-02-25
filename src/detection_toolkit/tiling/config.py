@@ -31,6 +31,8 @@ class TilingConfig:
         max_processes: Maximum parallel workers. ``None`` = auto.
         random_seed: Seed for negative-sample sampling reproducibility.
         fraction: Process only this fraction of images (for quick tests).
+        flatten: Place all unlabeled tiles in a single directory instead of
+            preserving the source subdirectory structure.
     """
 
     tile_size: int

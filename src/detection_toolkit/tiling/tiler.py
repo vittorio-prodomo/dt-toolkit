@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class DatasetTiler:
-    """Tile a YOLO or COCO dataset into fixed-size patches.
+    """Tile a YOLO, COCO, or unlabeled image dataset into fixed-size patches.
 
     Usage::
 
@@ -90,6 +90,9 @@ class DatasetTiler:
             self._tile_unlabeled(input_path, output_path)
             return None
 
+        if self.config.flatten:
+            logger.warning("--flatten is ignored for labeled datasets")
+
         logger.info(
             "Tiling %s dataset (%d images, tile_size=%d, overlap=%.0f%%)",
             info.format.value,
@@ -120,26 +123,10 @@ class DatasetTiler:
 
     def _calc_pad_width(self, info: DatasetInfo) -> int:
         """Calculate zero-padding width for tile index in filenames."""
-        from ..core.image_utils import get_image_size
-
-        max_tiles = 0
-        # Sample a few images to estimate max tiles per image
         sample_paths: List[Path] = []
         for split in info.splits.values():
             sample_paths.extend(split.image_paths[:5])
-
-        for img_path in sample_paths:
-            try:
-                w, h = get_image_size(img_path)
-                n = len(compute_tile_grid(
-                    w, h, self.config.tile_size,
-                    self.config.overlap_percent, self.config.edge_behavior,
-                ))
-                max_tiles = max(max_tiles, n)
-            except Exception:
-                pass
-
-        return max(1, len(str(max(max_tiles - 1, 0))))
+        return self._estimate_pad_width(sample_paths)
 
     # ------------------------------------------------------------------
     # Unlabeled tiling (parallel)
@@ -213,10 +200,14 @@ class DatasetTiler:
 
     def _calc_pad_width_unlabeled(self, images: List[Path]) -> int:
         """Calculate zero-padding width for tile index in filenames."""
+        return self._estimate_pad_width(images)
+
+    def _estimate_pad_width(self, sample_paths: List[Path]) -> int:
+        """Estimate zero-pad width from a sample of image paths."""
         from ..core.image_utils import get_image_size
 
         max_tiles = 0
-        for img_path in images[:5]:
+        for img_path in sample_paths[:5]:
             try:
                 w, h = get_image_size(img_path)
                 n = len(compute_tile_grid(
