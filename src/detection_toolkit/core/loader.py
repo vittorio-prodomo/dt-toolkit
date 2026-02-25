@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import yaml
 
-from .image_utils import find_image_file, find_images_in_dir
+from .image_utils import _in_hidden_dir, find_image_file, find_images_in_dir
 from .models import DatasetFormat, DatasetInfo, DatasetSplit, TaskType
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,10 @@ class DatasetLoader:
 
             labels_dir = self._infer_labels_dir(images_dir)
             image_paths = find_images_in_dir(images_dir)
-            label_paths = sorted(labels_dir.rglob("*.txt")) if labels_dir and labels_dir.exists() else []
+            label_paths = sorted(
+                p for p in labels_dir.rglob("*.txt")
+                if not _in_hidden_dir(p, labels_dir)
+            ) if labels_dir and labels_dir.exists() else []
 
             canon = _normalise_split(name)
             splits[canon] = DatasetSplit(
