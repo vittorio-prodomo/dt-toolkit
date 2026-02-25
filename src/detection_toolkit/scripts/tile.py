@@ -78,6 +78,11 @@ def parse_args(argv=None):
     p.add_argument("--max-processes", "-P", type=int, default=None, metavar="N",
                    help="Max parallel worker processes (default: CPU count).")
 
+    # Output structure
+    p.add_argument("--flatten", action="store_true",
+                   help="Flatten output directory structure. Only applies to "
+                        "unlabeled image datasets.")
+
     # Format
     p.add_argument("--format", "-f", choices=["yolo", "coco"], default=None,
                    help="Force dataset format (auto-detected if omitted).")
@@ -113,18 +118,20 @@ def main(argv=None):
             max_processes=args.max_processes,
             random_seed=args.random_seed,
             fraction=args.fraction,
+            flatten=args.flatten,
         )
 
     fmt = DatasetFormat(args.format) if args.format else None
     tiler = DatasetTiler(config, verbose=not args.quiet)
     result = tiler.tile(args.input, args.output, format=fmt)
 
-    print(f"Tiling complete:")
+    print("Tiling complete:")
     print(f"  Tile size:  {config.tile_size}px, overlap={config.overlap_percent:.0%}")
-    print(f"  Classes:    {result.num_classes}")
-    print(f"  Tiles:      {result.total_images}")
-    for name, split in result.splits.items():
-        print(f"    {name}: {split.num_images} tiles")
+    if result is not None:
+        print(f"  Classes:    {result.num_classes}")
+        print(f"  Tiles:      {result.total_images}")
+        for name, split in result.splits.items():
+            print(f"    {name}: {split.num_images} tiles")
     print(f"  Output:     {args.output}")
 
 
