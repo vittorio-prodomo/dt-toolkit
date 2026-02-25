@@ -633,8 +633,6 @@ class DatasetTiler:
         }
         if driver == "JPEG":
             kwargs["quality"] = self.config.compression
-        elif driver == "PNG":
-            kwargs["compress"] = "deflate"
 
         import rasterio
         with rasterio.open(out_path, "w", **kwargs) as dst:

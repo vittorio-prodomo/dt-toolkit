@@ -336,8 +336,6 @@ def _write_tile_image(
     }
     if driver == "JPEG":
         kwargs["quality"] = cfg.compression
-    elif driver == "PNG":
-        kwargs["compress"] = "deflate"
 
     with rasterio.open(out_path, "w", **kwargs) as dst:
         dst.write(data)
