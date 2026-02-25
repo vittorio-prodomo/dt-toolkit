@@ -58,22 +58,37 @@ class DatasetTiler:
         input_path: Union[str, Path],
         output_path: Union[str, Path],
         format: Optional[DatasetFormat] = None,
-    ) -> DatasetInfo:
+    ) -> Optional[DatasetInfo]:
         """Tile a dataset and write to *output_path*.
 
+        If *input_path* is a recognised YOLO/COCO dataset it is tiled with
+        annotations.  Otherwise it is treated as an unlabeled image
+        directory.
+
         Args:
-            input_path: Source dataset directory.
-            output_path: Where to write the tiled dataset.
+            input_path: Source dataset or image directory.
+            output_path: Where to write the tiled output.
             format: Explicit format. Auto-detected if *None*.
 
         Returns:
-            A :class:`DatasetInfo` for the tiled output dataset.
+            A :class:`DatasetInfo` for labeled datasets, or *None* for
+            unlabeled image directories.
         """
         input_path = Path(input_path)
         output_path = Path(output_path)
 
-        loader = DatasetLoader(input_path, verbose=False)
-        info = loader.load_dataset(format=format)
+        # Try labeled dataset first
+        try:
+            loader = DatasetLoader(input_path, verbose=False)
+            info = loader.load_dataset(format=format)
+        except (FileNotFoundError, ValueError):
+            if format is not None:
+                raise  # user explicitly requested a format — don't swallow
+            logger.info(
+                "No labeled dataset detected — tiling as unlabeled images"
+            )
+            self._tile_unlabeled(input_path, output_path)
+            return None
 
         logger.info(
             "Tiling %s dataset (%d images, tile_size=%d, overlap=%.0f%%)",
@@ -83,7 +98,6 @@ class DatasetTiler:
             self.config.overlap_percent * 100,
         )
 
-        # Calculate padding width for tile naming
         pad_width = self._calc_pad_width(info)
 
         if info.format == DatasetFormat.YOLO:
@@ -91,7 +105,6 @@ class DatasetTiler:
         else:
             self._tile_coco(info, output_path, pad_width)
 
-        # Load and return the result
         out_loader = DatasetLoader(output_path, verbose=False)
         result = out_loader.load_dataset(format=info.format)
         logger.info(
@@ -126,6 +139,93 @@ class DatasetTiler:
             except Exception:
                 pass
 
+        return max(1, len(str(max(max_tiles - 1, 0))))
+
+    # ------------------------------------------------------------------
+    # Unlabeled tiling (parallel)
+    # ------------------------------------------------------------------
+
+    def _tile_unlabeled(
+        self,
+        input_path: Path,
+        output_path: Path,
+    ) -> None:
+        """Tile an unlabeled image directory using multiprocessing."""
+        from ..core.image_utils import find_images_in_dir
+
+        images = self._sample_images(find_images_in_dir(input_path))
+        if not images:
+            logger.warning("No images found in %s", input_path)
+            return
+
+        logger.info(
+            "Tiling %d unlabeled images (tile_size=%d, overlap=%.0f%%, flatten=%s)",
+            len(images),
+            self.config.tile_size,
+            self.config.overlap_percent * 100,
+            self.config.flatten,
+        )
+
+        pad_width = self._calc_pad_width_unlabeled(images)
+        cfg_dict = self.config.to_dict()
+
+        # Build worker args
+        tasks = []
+        for img in images:
+            rel = img.relative_to(input_path)
+            if self.config.flatten:
+                # Prefix from relative path for disambiguation
+                parts = rel.parent.parts
+                prefix = "_".join(parts) + "_" + rel.stem if parts else rel.stem
+                out_dir = str(output_path)
+            else:
+                out_dir = str(output_path / rel.parent)
+                prefix = rel.stem
+            tasks.append((str(img), out_dir, prefix, pad_width, cfg_dict))
+
+        num_procs = optimal_process_count(len(tasks), self.config.max_processes)
+        total_tiles = 0
+
+        if num_procs <= 1:
+            for task in tqdm(
+                tasks, desc="  tiling", disable=not self.verbose,
+            ):
+                total_tiles += tile_single_image(task)
+        else:
+            logger.info(
+                "Tiling with %d workers (%d images)", num_procs, len(tasks),
+            )
+            with ProcessPoolExecutor(max_workers=num_procs) as pool:
+                futures = {
+                    pool.submit(tile_single_image, t): t for t in tasks
+                }
+                for future in tqdm(
+                    as_completed(futures),
+                    total=len(futures),
+                    desc="  tiling",
+                    disable=not self.verbose,
+                ):
+                    total_tiles += future.result()
+
+        logger.info(
+            "Tiling complete: %d images -> %d tiles", len(images), total_tiles,
+        )
+
+    def _calc_pad_width_unlabeled(self, images: List[Path]) -> int:
+        """Calculate zero-padding width for tile index in filenames."""
+        from ..core.image_utils import get_image_size
+
+        max_tiles = 0
+        for img_path in images[:5]:
+            try:
+                w, h = get_image_size(img_path)
+                n = len(compute_tile_grid(
+                    w, h, self.config.tile_size,
+                    self.config.overlap_percent, self.config.edge_behavior,
+                ))
+                max_tiles = max(max_tiles, n)
+            except Exception:
+                pass
         return max(1, len(str(max(max_tiles - 1, 0))))
 
     # ------------------------------------------------------------------
