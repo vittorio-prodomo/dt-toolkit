@@ -6,9 +6,6 @@ OpenAI /v1/embeddings endpoint.
 
 import base64
 import logging
-from pathlib import Path
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
