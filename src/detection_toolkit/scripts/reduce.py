@@ -101,7 +101,7 @@ def main(argv=None):
         level = logging.INFO
     logging.basicConfig(level=level, format="%(name)s - %(levelname)s - %(message)s")
 
-    from detection_toolkit.reduce import DimensionalityReducer
+    from detection_toolkit.reduction import DimensionalityReducer
 
     dataset = _load_dataset(args.dataset)
     kwargs = _collect_method_kwargs(args)
