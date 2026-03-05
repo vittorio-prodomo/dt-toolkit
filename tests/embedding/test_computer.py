@@ -1,7 +1,6 @@
 """Tests for EmbeddingComputer."""
 
-import sys
-import types
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -113,3 +112,77 @@ def test_compute_invalid_backend():
 
     with pytest.raises(ValueError, match="Unknown.*backend"):
         computer.compute(ds, backend="bogus", model="x", output_field="e")
+
+
+def test_compute_huggingface_backend(monkeypatch):
+    """HuggingFace backend loads model and calls compute_embeddings."""
+    import transformers
+
+    from detection_toolkit.embedding import EmbeddingComputer
+
+    loaded_model = FakeZooModel()
+    monkeypatch.setattr(
+        transformers,
+        "AutoModel",
+        type(
+            "MockAutoModel",
+            (),
+            {"from_pretrained": staticmethod(lambda name, **kw: loaded_model)},
+        ),
+    )
+
+    ds = FakeDataset(n_samples=15)
+    computer = EmbeddingComputer()
+    computer.compute(
+        ds,
+        backend="huggingface",
+        model="facebook/dinov3-vits16-pretrain-lvd1689m",
+        output_field="hf_emb",
+        batch_size=8,
+    )
+
+    assert "hf_emb" in ds._stored
+
+
+def test_compute_api_backend():
+    """API backend sends HTTP requests and stores embeddings."""
+    from detection_toolkit.embedding import EmbeddingComputer
+    from detection_toolkit.embedding.backends import api as api_module
+
+    ds = FakeDataset(
+        fields={"filepath": [f"/img/{i}.png" for i in range(5)]},
+        n_samples=5,
+    )
+
+    fake_embedding = [0.1] * 16
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"data": [{"embedding": fake_embedding}]}
+
+    with patch.object(api_module, "_encode_image_base64", return_value="AAAA"):
+        with patch("requests.post", return_value=mock_response):
+            computer = EmbeddingComputer()
+            computer.compute(
+                ds,
+                backend="api",
+                model="test-model",
+                output_field="api_emb",
+                batch_size=2,
+                api_url="http://localhost:8001/v1",
+            )
+
+    assert "api_emb" in ds._stored
+    assert len(ds._stored["api_emb"]) == 5
+    assert ds._stored["api_emb"][0] == fake_embedding
+
+
+def test_compute_api_requires_url():
+    """API backend requires --api-url."""
+    from detection_toolkit.embedding import EmbeddingComputer
+
+    ds = FakeDataset()
+    computer = EmbeddingComputer()
+
+    with pytest.raises(ValueError, match="api-url"):
+        computer.compute(ds, backend="api", model="x", output_field="e")
