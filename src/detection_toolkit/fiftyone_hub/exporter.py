@@ -4,9 +4,12 @@ Supports per-split export, area-ratio filtering, negative sampling,
 and tag-based exclusion.
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import List, Optional, Union
+
+import numpy as np
 
 import fiftyone as fo
 import yaml
@@ -18,6 +21,32 @@ from ..core.models import DatasetFormat
 from .utils import NegativeSampler, filter_by_area_ratio, resolve_label_field
 
 logger = logging.getLogger(__name__)
+
+
+def _write_weights_json(filepaths, scores, output_dir):
+    """Write per-split weights.json with normalized scores.
+
+    Args:
+        filepaths: List of absolute file paths for this split's samples.
+        scores: List of raw score values (same length as filepaths).
+        output_dir: Directory to write weights.json into.
+    """
+    scores_arr = np.array(scores, dtype=np.float64)
+    s_min, s_max = scores_arr.min(), scores_arr.max()
+    if s_max - s_min > 1e-12:
+        weights = (scores_arr - s_min) / (s_max - s_min)
+    else:
+        weights = np.ones_like(scores_arr)
+
+    mapping = {}
+    for fp, w in zip(filepaths, weights):
+        filename = Path(fp).name
+        mapping[filename] = round(float(w), 6)
+
+    out_path = Path(output_dir) / "weights.json"
+    with open(out_path, "w") as f:
+        json.dump(mapping, f, indent=2)
+    logger.info("Wrote %d weights to %s", len(mapping), out_path)
 
 
 class FiftyOneDatasetExporter:
@@ -48,6 +77,7 @@ class FiftyOneDatasetExporter:
         negative_tags: Optional[List[str]] = None,
         negative_default_ratio: float = 0.3,
         exclude_tags: Optional[List[str]] = None,
+        weights_field: Optional[str] = None,
     ) -> None:
         """Export *dataset* to disk.
 
@@ -68,6 +98,9 @@ class FiftyOneDatasetExporter:
             negative_tags: Tags for bucketed negative sampling.
             negative_default_ratio: Default-bucket share in stratified mode.
             exclude_tags: Sample-level tags to exclude before export.
+            weights_field: Optional sample field containing importance scores.
+                When provided, a ``weights.json`` file is written per split
+                mapping filenames to ``[0, 1]`` normalized weights.
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -112,9 +145,9 @@ class FiftyOneDatasetExporter:
 
         # --- Export ---
         if format == DatasetFormat.YOLO:
-            self._export_yolo(view, output_dir, export_media)
+            self._export_yolo(view, output_dir, export_media, weights_field)
         elif format == DatasetFormat.COCO:
-            self._export_coco(view, output_dir, export_media)
+            self._export_coco(view, output_dir, export_media, weights_field)
         else:
             raise ValueError(f"Unsupported export format: {format}")
 
@@ -251,6 +284,7 @@ class FiftyOneDatasetExporter:
         view,
         output_dir: Path,
         export_media: str,
+        weights_field=None,
     ) -> None:
         export_splits = self._resolve_export_splits(view)
         classes = self._resolve_classes(view)
@@ -276,6 +310,12 @@ class FiftyOneDatasetExporter:
                 classes=classes,
             )
             split_view.export(dataset_exporter=exporter)
+            if weights_field:
+                _write_weights_json(
+                    split_view.values("filepath"),
+                    split_view.values(weights_field),
+                    output_dir / "images" / split,
+                )
 
         # Post-process the YAML
         self._fix_yolo_yaml(yaml_path, classes)
@@ -285,6 +325,7 @@ class FiftyOneDatasetExporter:
         view,
         output_dir: Path,
         export_media: str,
+        weights_field=None,
     ) -> None:
         export_splits = self._resolve_export_splits(view)
         classes = self._resolve_classes(view)
@@ -310,6 +351,12 @@ class FiftyOneDatasetExporter:
                 extra_attrs=True,
             )
             split_view.export(dataset_exporter=exporter)
+            if weights_field:
+                _write_weights_json(
+                    split_view.values("filepath"),
+                    split_view.values(weights_field),
+                    output_dir / "images" / split,
+                )
 
     # ------------------------------------------------------------------
     # Helpers

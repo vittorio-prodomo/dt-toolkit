@@ -50,6 +50,9 @@ def parse_args(argv=None):
     p.add_argument("--exclude-tags", "-x", nargs="+", default=None,
                    metavar="TAG",
                    help="Exclude samples with these tags.")
+    p.add_argument("--weights-field", "-w", default=None,
+                   metavar="FIELD",
+                   help="Score field for loss weighting (writes weights.json per split).")
     p.add_argument("--quiet", "-q", action="store_true")
     return p.parse_args(argv)
 
@@ -68,7 +71,7 @@ def main(argv=None):
     dataset = fo.load_dataset(args.name)
     fmt = DatasetFormat(args.to)
 
-    exporter = FiftyOneDatasetExporter(verbose=not args.quiet)
+    exporter = FiftyOneDatasetExporter()
     exporter.export(
         dataset=dataset,
         output_dir=args.output,
@@ -80,6 +83,7 @@ def main(argv=None):
         max_area_ratio=args.max_area_ratio,
         negative_ratio=args.negative_ratio,
         exclude_tags=args.exclude_tags,
+        weights_field=args.weights_field,
     )
 
     print(f"FiftyOne export complete:")
