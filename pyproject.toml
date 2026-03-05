@@ -72,6 +72,7 @@ dt-import-fo = "detection_toolkit.scripts.import_fo:main"
 dt-export-fo = "detection_toolkit.scripts.export_fo:main"
 dt-enrich = "detection_toolkit.scripts.enrich:main"
 dt-cvat = "detection_toolkit.scripts.cvat:main"
+dt-coreset = "detection_toolkit.scripts.coreset:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
