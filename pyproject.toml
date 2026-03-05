@@ -65,8 +65,12 @@ reduce = [
 cluster = [
     "scikit-learn",
 ]
+embed = [
+    "transformers",
+    "torch",
+]
 all = [
-    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr,reduce,cluster]",
+    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr,embed,reduce,cluster]",
 ]
 
 [project.scripts]
@@ -83,6 +87,7 @@ dt-cvat = "detection_toolkit.scripts.cvat:main"
 dt-coreset = "detection_toolkit.scripts.coreset:main"
 dt-reduce = "detection_toolkit.scripts.reduce:main"
 dt-cluster = "detection_toolkit.scripts.cluster:main"
+dt-embed = "detection_toolkit.scripts.embed:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
