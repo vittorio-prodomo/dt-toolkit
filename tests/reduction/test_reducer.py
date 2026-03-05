@@ -151,3 +151,56 @@ def test_reduce_invalid_method():
             method="bogus_method",
             n_components=4,
         )
+
+
+def test_reduce_umap():
+    """UMAP reduces embeddings."""
+    pytest.importorskip("umap")
+    from detection_toolkit.reduction import DimensionalityReducer
+
+    rng = np.random.default_rng(42)
+    embs = rng.standard_normal((80, 32)).tolist()
+    ds = FakeDataset({"emb": embs})
+
+    reducer = DimensionalityReducer()
+    result = reducer.reduce(
+        ds, input_field="emb", output_field="emb_umap",
+        method="umap", n_components=4, n_neighbors=10,
+    )
+    assert result.shape == (80, 4)
+    assert len(ds._stored["emb_umap"]) == 80
+
+
+def test_reduce_tsne():
+    """t-SNE reduces embeddings to 2d."""
+    from detection_toolkit.reduction import DimensionalityReducer
+
+    rng = np.random.default_rng(42)
+    embs = rng.standard_normal((80, 32)).tolist()
+    ds = FakeDataset({"emb": embs})
+
+    reducer = DimensionalityReducer()
+    result = reducer.reduce(
+        ds, input_field="emb", output_field="emb_tsne",
+        method="tsne", n_components=2, perplexity=10,
+    )
+    assert result.shape == (80, 2)
+    assert len(ds._stored["emb_tsne"]) == 80
+
+
+def test_reduce_pacmap():
+    """PaCMAP reduces embeddings."""
+    pytest.importorskip("pacmap")
+    from detection_toolkit.reduction import DimensionalityReducer
+
+    rng = np.random.default_rng(42)
+    embs = rng.standard_normal((80, 32)).tolist()
+    ds = FakeDataset({"emb": embs})
+
+    reducer = DimensionalityReducer()
+    result = reducer.reduce(
+        ds, input_field="emb", output_field="emb_pacmap",
+        method="pacmap", n_components=4,
+    )
+    assert result.shape == (80, 4)
+    assert len(ds._stored["emb_pacmap"]) == 80
