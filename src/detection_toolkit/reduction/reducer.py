@@ -6,7 +6,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_METHODS = {"pca", "tsne", "umap", "pacmap"}
+_SUPPORTED_METHODS = {"pca", "tsne", "umap", "pacmap"}
 
 
 class DimensionalityReducer:
@@ -47,10 +47,10 @@ class DimensionalityReducer:
             Rows with missing input embeddings contain NaN.
         """
         # --- Validate method ---
-        if method not in SUPPORTED_METHODS:
+        if method not in _SUPPORTED_METHODS:
             raise ValueError(
                 f"Unknown reduction method '{method}'. "
-                f"Supported: {sorted(SUPPORTED_METHODS)}"
+                f"Supported: {sorted(_SUPPORTED_METHODS)}"
             )
 
         # --- Overwrite protection ---
@@ -76,23 +76,27 @@ class DimensionalityReducer:
             len(valid_embeddings), n_total, method, n_components,
         )
 
+        # --- Handle all-None edge case ---
+        full_result = np.full((n_total, n_components), np.nan, dtype=np.float32)
+        if not valid_embeddings:
+            logger.warning("No valid embeddings found; returning all-NaN result.")
+            dataset.set_values(output_field, [None] * n_total)
+            return full_result
+
         # --- Build model and fit_transform ---
         model = self._build_model(method, n_components, random_state, **method_kwargs)
-        valid_array = np.asarray(valid_embeddings, dtype=np.float64)
+        valid_array = np.asarray(valid_embeddings, dtype=np.float32)
         reduced_valid = model.fit_transform(valid_array)
 
         # --- Reconstruct full output ---
-        full_result = np.full((n_total, n_components), np.nan, dtype=np.float64)
-        for idx, reduced_row in zip(valid_indices, reduced_valid):
-            full_result[idx] = reduced_row
+        full_result[valid_indices] = reduced_valid
 
-        # --- Store on dataset ---
-        stored_values = []
-        for i in range(n_total):
-            if np.any(np.isnan(full_result[i])):
-                stored_values.append(None)
-            else:
-                stored_values.append(full_result[i].tolist())
+        # --- Store on dataset (use index membership, not NaN check) ---
+        valid_set = set(valid_indices)
+        stored_values = [
+            full_result[i].tolist() if i in valid_set else None
+            for i in range(n_total)
+        ]
         dataset.set_values(output_field, stored_values)
 
         logger.info(
