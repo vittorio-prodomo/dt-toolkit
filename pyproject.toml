@@ -57,8 +57,13 @@ train-detectron2 = [
 train-rfdetr = [
     "rfdetr",
 ]
+reduce = [
+    "umap-learn",
+    "pacmap",
+    "scikit-learn",
+]
 all = [
-    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr]",
+    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr,reduce]",
 ]
 
 [project.scripts]
@@ -73,6 +78,7 @@ dt-export-fo = "detection_toolkit.scripts.export_fo:main"
 dt-enrich = "detection_toolkit.scripts.enrich:main"
 dt-cvat = "detection_toolkit.scripts.cvat:main"
 dt-coreset = "detection_toolkit.scripts.coreset:main"
+dt-reduce = "detection_toolkit.scripts.reduce:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
