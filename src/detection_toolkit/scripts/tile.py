@@ -3,11 +3,16 @@
 
 Usage::
 
+    # Disk mode — tile a local YOLO/COCO dataset
     python -m detection_toolkit.scripts.tile datasets/my_ds output/tiled \\
         --tile-size 640 --overlap 0.3
 
     python -m detection_toolkit.scripts.tile datasets/my_ds output/tiled \\
         --config tiling_config.yaml
+
+    # FiftyOne mode — tile a FiftyOne dataset
+    python -m detection_toolkit.scripts.tile --fo my_dataset output/tiled \\
+        --tile-size 640 --to coco
 """
 
 import argparse
@@ -20,8 +25,33 @@ from detection_toolkit.cli import make_parser
 
 def parse_args(argv=None):
     p = make_parser("Tile a dataset into fixed-size patches.")
-    p.add_argument("input", type=Path, help="Input dataset directory.")
-    p.add_argument("output", type=Path, help="Output tiled dataset directory.")
+
+    # input is optional: required for disk mode, absent for --fo mode
+    p.add_argument("input", nargs="?", default=None,
+                   help="Input dataset directory (disk mode). "
+                        "Omit when using --fo.")
+    p.add_argument("output", help="Output tiled dataset directory.")
+
+    # FiftyOne input mode
+    fo_group = p.add_argument_group("FiftyOne input")
+    fo_group.add_argument(
+        "--fo", type=str, default=None, metavar="DATASET",
+        help="Use a FiftyOne dataset as input instead of a disk directory. "
+             "Pass the dataset name (or a saved view name).",
+    )
+    fo_group.add_argument(
+        "--to", choices=["yolo", "coco"], default="yolo",
+        help="Output format when using --fo mode (default: yolo).",
+    )
+    fo_group.add_argument(
+        "--name", type=str, default=None, metavar="NAME",
+        help="Name for the reimported tiled dataset in FiftyOne. "
+             "Defaults to '{source}_tiled_{tile_size}'.",
+    )
+    fo_group.add_argument(
+        "--no-reimport", action="store_true",
+        help="Do not reimport tiled results back into FiftyOne.",
+    )
 
     p.add_argument(
         "--config", "-c",
@@ -95,11 +125,20 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
 
+    # Validate: exactly one of input or --fo must be set
+    if args.fo and args.input:
+        print("error: cannot use both positional input and --fo", file=sys.stderr)
+        sys.exit(2)
+    if not args.fo and not args.input:
+        print("error: provide either a positional input directory or --fo DATASET",
+              file=sys.stderr)
+        sys.exit(2)
+
     level = logging.WARNING if args.quiet else logging.INFO
     logging.basicConfig(level=level, format="%(name)s - %(levelname)s - %(message)s")
+    log = logging.getLogger("dt-tile")
 
     from detection_toolkit.tiling import TilingConfig, DatasetTiler
-    from detection_toolkit.core.models import DatasetFormat
 
     if args.config:
         config = TilingConfig.from_yaml(args.config)
@@ -121,9 +160,36 @@ def main(argv=None):
             flatten=args.flatten,
         )
 
-    fmt = DatasetFormat(args.format) if args.format else None
+    output_path = Path(args.output)
     tiler = DatasetTiler(config, verbose=not args.quiet)
-    result = tiler.tile(args.input, args.output, format=fmt)
+
+    if args.fo:
+        # FiftyOne mode
+        # Warn on incompatible flags
+        if args.flatten:
+            log.warning("--flatten is ignored in --fo mode")
+        if args.format:
+            log.warning("--format is ignored in --fo mode (use --to instead)")
+        if args.fraction is not None:
+            log.warning("--fraction is ignored in --fo mode "
+                        "(pre-filter your dataset view instead)")
+
+        import fiftyone as fo
+
+        dataset = fo.load_dataset(args.fo)
+        result = tiler.tile_fo(
+            dataset,
+            output_path,
+            output_format=args.to,
+            reimport=not args.no_reimport,
+            dataset_name=args.name,
+        )
+    else:
+        # Disk mode
+        from detection_toolkit.core.models import DatasetFormat
+
+        fmt = DatasetFormat(args.format) if args.format else None
+        result = tiler.tile(Path(args.input), output_path, format=fmt)
 
     print("Tiling complete:")
     print(f"  Tile size:  {config.tile_size}px, overlap={config.overlap_percent:.0%}")
@@ -132,7 +198,7 @@ def main(argv=None):
         print(f"  Tiles:      {result.total_images}")
         for name, split in result.splits.items():
             print(f"    {name}: {split.num_images} tiles")
-    print(f"  Output:     {args.output}")
+    print(f"  Output:     {output_path}")
 
 
 if __name__ == "__main__":
