@@ -11,8 +11,9 @@ Handles all five common directory layouts transparently:
 
 import json
 import logging
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import yaml
 
@@ -33,7 +34,7 @@ def _normalise_split(name: str) -> str:
 
 
 class DatasetLoader:
-    """Load YOLO or COCO datasets with automatic format and split detection.
+    """Detect and load on-disk datasets (YOLO, COCO) with automatic format and split detection.
 
     Usage::
 
@@ -60,20 +61,29 @@ class DatasetLoader:
         """Probe the directory tree and return the detected format.
 
         Raises ``ValueError`` if the format cannot be determined
-        or if both YOLO and COCO are detected.
+        or if multiple formats are detected.
         """
         has_yolo = self._has_yolo_indicators()
         has_coco = self._has_coco_indicators()
+        has_cvat = self._has_cvat_indicators()
 
-        if has_yolo and has_coco:
+        detected = [
+            f
+            for f, v in [
+                (DatasetFormat.YOLO, has_yolo),
+                (DatasetFormat.COCO, has_coco),
+                (DatasetFormat.CVAT, has_cvat),
+            ]
+            if v
+        ]
+
+        if len(detected) > 1:
             raise ValueError(
-                "Both YOLO and COCO indicators detected in "
-                f"{self.dataset_dir}. Specify the format explicitly."
+                f"Multiple formats detected ({', '.join(f.value for f in detected)}) "
+                f"in {self.dataset_dir}. Specify the format explicitly."
             )
-        if has_yolo:
-            return DatasetFormat.YOLO
-        if has_coco:
-            return DatasetFormat.COCO
+        if len(detected) == 1:
+            return detected[0]
         raise ValueError(
             f"Could not detect dataset format in {self.dataset_dir}"
         )
@@ -83,6 +93,9 @@ class DatasetLoader:
         format: Optional[DatasetFormat] = None,
     ) -> DatasetInfo:
         """Load a full dataset into a :class:`DatasetInfo` object.
+
+        Only YOLO and COCO formats are supported here.  For CVAT Image
+        datasets, use :class:`~detection_toolkit.fiftyone_hub.loader.FiftyOneDatasetLoader`.
 
         Args:
             format: If ``None``, the format is auto-detected.
@@ -94,7 +107,11 @@ class DatasetLoader:
             return self._load_yolo_dataset()
         if format == DatasetFormat.COCO:
             return self._load_coco_dataset()
-        raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(
+            f"Format '{format.value}' is not supported by "
+            "DatasetLoader.load_dataset(). Use FiftyOneDatasetLoader.load() "
+            "for CVAT datasets."
+        )
 
     # ==================================================================
     # YOLO loading
@@ -480,6 +497,23 @@ class DatasetLoader:
             if (d / "_annotations.coco.json").exists():
                 return True
 
+        return False
+
+    def _has_cvat_indicators(self) -> bool:
+        """Return True if a CVAT Image 1.1 XML file is found at the root."""
+        for name in ("labels.xml", "annotations.xml"):
+            xml_path = self.dataset_dir / name
+            if not xml_path.is_file():
+                continue
+            try:
+                tree = ET.parse(xml_path)
+                root = tree.getroot()
+                if root.tag == "annotations":
+                    version_el = root.find("version")
+                    if version_el is not None and version_el.text == "1.1":
+                        return True
+            except ET.ParseError:
+                continue
         return False
 
     def _iter_split_dirs(self):

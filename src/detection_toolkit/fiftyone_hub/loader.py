@@ -5,6 +5,7 @@ split detection, then feeds each split through FiftyOne's native importers.
 """
 
 import logging
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, Union
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class FiftyOneDatasetLoader:
-    """Import a YOLO or COCO dataset into FiftyOne.
+    """Import a YOLO, COCO, or CVAT dataset into FiftyOne.
 
     Automatically detects the on-disk format and directory variant via
     :class:`DatasetLoader`, then delegates to FiftyOne's importers so
@@ -50,6 +51,7 @@ class FiftyOneDatasetLoader:
         use_polylines: bool = False,
         create_thumbs: bool = False,
         thumbnail_size: int = 256,
+        data_path: Optional[str] = None,
     ) -> fo.Dataset:
         """Load a dataset into FiftyOne.
 
@@ -65,6 +67,9 @@ class FiftyOneDatasetLoader:
                 instead of dense masks.
             create_thumbs: Generate thumbnails for the app grid.
             thumbnail_size: Thumbnail height in pixels.
+            data_path: External image directory. When provided, images
+                are loaded from this path instead of the default
+                ``data/`` sub-directory (CVAT only).
 
         Returns:
             The loaded :class:`fo.Dataset`.
@@ -84,16 +89,33 @@ class FiftyOneDatasetLoader:
                     "Pass overwrite=True to replace it."
                 )
 
-        # Detect format + splits via the core loader
+        # Detect format
         core_loader = DatasetLoader(dataset_path, verbose=self.verbose)
-        try:
-            info = core_loader.load_dataset(format=format)
-        except (ValueError, FileNotFoundError):
-            if format is not None:
-                raise
+        if format is None:
+            try:
+                format = core_loader.detect_format()
+            except ValueError:
+                format = None
+
+        # CVAT path — delegate entirely to FiftyOne's importer
+        if format == DatasetFormat.CVAT:
+            fo_dataset = self._load_cvat_image(
+                dataset_path, dataset_name, persistent, shuffle,
+                include_all_data, data_path,
+            )
+            fo_dataset.compute_metadata()
+            if create_thumbs:
+                create_thumbnails(fo_dataset, dataset_path, thumbnail_size)
+            logger.info(
+                "Dataset '%s' ready — %d samples",
+                dataset_name, len(fo_dataset),
+            )
+            return fo_dataset
+
+        if format is None:
             # Fall back to plain image directory (unlabeled)
             logger.info(
-                "No YOLO/COCO format detected; importing as unlabeled "
+                "No YOLO/COCO/CVAT format detected; importing as unlabeled "
                 "image directory: %s", dataset_path,
             )
             fo_dataset = fo.Dataset.from_images_dir(
@@ -109,6 +131,9 @@ class FiftyOneDatasetLoader:
                 dataset_name, len(fo_dataset),
             )
             return fo_dataset
+
+        # YOLO/COCO path — load info first
+        info = core_loader.load_dataset(format=format)
 
         logger.info(
             "Detected %s format with %d splits: %s",
@@ -139,7 +164,83 @@ class FiftyOneDatasetLoader:
         return fo_dataset
 
     # ------------------------------------------------------------------
-    # CVAT
+    # CVAT Image (disk)
+    # ------------------------------------------------------------------
+
+    def _load_cvat_image(
+        self,
+        dataset_path: Path,
+        dataset_name: str,
+        persistent: bool,
+        shuffle: bool,
+        include_all_data: bool,
+        data_path: Optional[str],
+    ) -> fo.Dataset:
+        from fiftyone.utils.cvat import CVATImageDatasetImporter
+
+        # Find the labels XML
+        labels_path = None
+        for name in ("labels.xml", "annotations.xml"):
+            candidate = dataset_path / name
+            if candidate.is_file():
+                labels_path = candidate
+                break
+
+        importer_kwargs = dict(
+            dataset_dir=str(dataset_path),
+            labels_path=str(labels_path) if labels_path else None,
+            include_all_data=include_all_data,
+            shuffle=shuffle,
+        )
+        if data_path is not None:
+            importer_kwargs["data_path"] = data_path
+
+        importer = CVATImageDatasetImporter(**importer_kwargs)
+        fo_dataset = fo.Dataset.from_importer(
+            importer,
+            name=dataset_name,
+            persistent=persistent,
+            overwrite=True,
+        )
+
+        # Set split field from XML subset attributes
+        if labels_path is not None:
+            self._set_cvat_splits(fo_dataset, labels_path)
+
+        return fo_dataset
+
+    @staticmethod
+    def _set_cvat_splits(dataset: fo.Dataset, labels_path: Path) -> None:
+        """Parse subset attributes from CVAT XML and set the split field."""
+        try:
+            tree = ET.parse(labels_path)
+        except ET.ParseError:
+            return
+
+        root = tree.getroot()
+        # Map image name -> subset
+        subset_map = {}
+        for image_el in root.iter("image"):
+            subset = image_el.get("subset")
+            if subset:
+                name = image_el.get("name", "")
+                subset_map[name] = subset
+
+        if not subset_map:
+            return
+
+        dataset.add_sample_field("split", fo.StringField)
+
+        # Build filepath -> subset mapping (bulk API, not per-sample)
+        filepaths = dataset.values("filepath")
+        splits = [subset_map.get(Path(fp).name) for fp in filepaths]
+
+        dataset.set_values("split", splits)
+        unique = set(s for s in splits if s is not None)
+        logger.info("Set split field from CVAT subsets: %s", sorted(unique))
+
+    # ------------------------------------------------------------------
+    # CVAT (server)
     # ------------------------------------------------------------------
 
     def load_cvat(

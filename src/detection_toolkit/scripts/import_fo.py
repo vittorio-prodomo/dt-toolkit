@@ -6,8 +6,9 @@ Usage::
     python -m detection_toolkit.scripts.import_fo disk <path> [name] [opts]
     python -m detection_toolkit.scripts.import_fo cvat <name> [opts]
 
-The ``disk`` subcommand auto-detects YOLO and COCO formats.  If neither
-is found, the directory is imported as a plain (unlabeled) image dataset.
+The ``disk`` subcommand auto-detects YOLO, COCO, and CVAT Image formats.
+If none is found, the directory is imported as a plain (unlabeled) image
+dataset.
 The ``name`` argument is optional and defaults to the directory name.
 """
 
@@ -51,10 +52,10 @@ def parse_args(argv=None):
     # ---- disk (existing behaviour) ------------------------------------
     disk = sub.add_parser(
         "disk",
-        help="Import an on-disk dataset (YOLO, COCO, or plain images).",
+        help="Import an on-disk dataset (YOLO, COCO, CVAT, or plain images).",
         description="Import an on-disk dataset into FiftyOne.\n\n"
-                    "Supports YOLO and COCO formats (auto-detected), as well\n"
-                    "as plain directories of images (unlabeled datasets).",
+                    "Supports YOLO, COCO, and CVAT Image formats (auto-detected),\n"
+                    "as well as plain directories of images (unlabeled datasets).",
         formatter_class=formatter_class(raw_text=True),
     )
     disk.add_argument("dataset", type=Path,
@@ -63,7 +64,7 @@ def parse_args(argv=None):
                       help="FiftyOne dataset name (default: directory name).")
     disk.add_argument(
         "--format", "-f",
-        choices=["yolo", "coco"],
+        choices=["yolo", "coco", "cvat"],
         default=None,
         help="Force format (auto-detected if omitted).",
     )
@@ -77,6 +78,13 @@ def parse_args(argv=None):
         "--use-polylines", "-p", action="store_true",
         help="Import segmentations as polylines instead of dense masks. "
              "COCO only.",
+    )
+    disk.add_argument(
+        "--data-path", "-d", type=str, default=None,
+        metavar="PATH",
+        help="Directory where images reside, if outside the dataset root.\n"
+             "Useful for CVAT Image datasets whose images live on a\n"
+             "separate mount (e.g. a CVAT sharePath).",
     )
     disk.add_argument("--overwrite", "-O", action="store_true",
                       help="Delete existing FiftyOne dataset with this name.")
@@ -210,6 +218,7 @@ def main(argv=None):
             use_polylines=args.use_polylines,
             create_thumbs=args.create_thumbnails,
             thumbnail_size=args.thumbnail_size,
+            data_path=args.data_path,
         )
 
     elif args.subcommand == "cvat":
