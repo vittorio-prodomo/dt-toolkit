@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 import rasterio
 
 
@@ -88,8 +87,8 @@ def test_tile_fo_yolo(tmp_path):
     config = TilingConfig(tile_size=128, overlap_percent=0.0, edge_behavior="crop")
     tiler = DatasetTiler(config, verbose=False)
 
-    with patch("detection_toolkit.tiling.tiler.resolve_label_field", create=True, return_value="segmentations"), \
-         patch("detection_toolkit.tiling.tiler._detect_container_type", create=True, return_value="polylines"):
+    with patch("detection_toolkit.fiftyone_hub.utils.resolve_label_field", return_value="segmentations"), \
+         patch("detection_toolkit.fiftyone_hub.utils._detect_container_type", return_value="polylines"):
         result = tiler.tile_fo(
             dataset,
             output_dir,
@@ -118,8 +117,8 @@ def test_tile_fo_coco(tmp_path):
     config = TilingConfig(tile_size=128, overlap_percent=0.0, edge_behavior="crop")
     tiler = DatasetTiler(config, verbose=False)
 
-    with patch("detection_toolkit.tiling.tiler.resolve_label_field", create=True, return_value="segmentations"), \
-         patch("detection_toolkit.tiling.tiler._detect_container_type", create=True, return_value="polylines"):
+    with patch("detection_toolkit.fiftyone_hub.utils.resolve_label_field", return_value="segmentations"), \
+         patch("detection_toolkit.fiftyone_hub.utils._detect_container_type", return_value="polylines"):
         result = tiler.tile_fo(
             dataset,
             output_dir,

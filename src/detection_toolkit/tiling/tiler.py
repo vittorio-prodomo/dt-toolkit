@@ -145,26 +145,20 @@ class DatasetTiler:
             A :class:`DatasetInfo` for the tiled output, or *None* if
             reimport is disabled.
         """
-        # Lazy imports — fiftyone_hub.utils imports fiftyone at module level.
-        # We bind into the module namespace so that unittest.mock.patch can
-        # intercept them in tests (with create=True).  If a mock has already
-        # set them, we honour the mock instead.
-        import detection_toolkit.tiling.tiler as _self_mod
-        if not hasattr(_self_mod, "resolve_label_field"):
-            from ..fiftyone_hub.utils import resolve_label_field as _rlf
-            _self_mod.resolve_label_field = _rlf
-        if not hasattr(_self_mod, "_detect_container_type"):
-            from ..fiftyone_hub.utils import _detect_container_type as _dct
-            _self_mod._detect_container_type = _dct
+        if output_format not in ("yolo", "coco"):
+            raise ValueError(
+                f"Unsupported output_format: {output_format!r}. Use 'yolo' or 'coco'."
+            )
 
+        from ..fiftyone_hub.utils import resolve_label_field, _detect_container_type
         from .fo_extract import build_class_map, extract_annotations
 
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
         # Resolve label field and container type
-        resolved_field = _self_mod.resolve_label_field(dataset, label_field)
-        container_type = _self_mod._detect_container_type(dataset, resolved_field)
+        resolved_field = resolve_label_field(dataset, label_field)
+        container_type = _detect_container_type(dataset, resolved_field)
 
         # Build class mapping
         class_map = build_class_map(dataset.classes)
