@@ -231,11 +231,9 @@ class FiftyOneDatasetLoader:
 
         dataset.add_sample_field("split", fo.StringField)
 
-        # Build filepath -> subset mapping
-        splits = []
-        for sample in dataset.iter_samples():
-            fname = Path(sample.filepath).name
-            splits.append(subset_map.get(fname))
+        # Build filepath -> subset mapping (bulk API, not per-sample)
+        filepaths = dataset.values("filepath")
+        splits = [subset_map.get(Path(fp).name) for fp in filepaths]
 
         dataset.set_values("split", splits)
         unique = set(s for s in splits if s is not None)
