@@ -28,7 +28,7 @@ from .geometry import (
     polygon_area_ratio,
     to_tile_coords,
 )
-from .parallel import optimal_process_count, tile_single_yolo_image, tile_single_image
+from .parallel import optimal_process_count, tile_single_yolo_image, tile_single_image, tile_single_fo_sample
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,286 @@ class DatasetTiler:
             result.total_images,
         )
         return result
+
+    # ------------------------------------------------------------------
+    # FiftyOne dataset tiling
+    # ------------------------------------------------------------------
+
+    def tile_fo(
+        self,
+        dataset,
+        output_path: Union[str, Path],
+        output_format: str = "yolo",
+        label_field: Optional[str] = None,
+        reimport: bool = True,
+        dataset_name: Optional[str] = None,
+    ) -> Optional[DatasetInfo]:
+        """Tile a FiftyOne dataset and write to disk.
+
+        Args:
+            dataset: FiftyOne Dataset or DatasetView.
+            output_path: Where to write the tiled output.
+            output_format: ``"yolo"`` or ``"coco"``.
+            label_field: Label field name; auto-resolved if *None*.
+            reimport: Reimport tiled result into FiftyOne after writing.
+            dataset_name: Name for reimported dataset. Defaults to
+                ``"{source}_tiled_{tile_size}"``.
+
+        Returns:
+            A :class:`DatasetInfo` for the tiled output, or *None* if
+            reimport is disabled.
+        """
+        if output_format not in ("yolo", "coco"):
+            raise ValueError(
+                f"Unsupported output_format: {output_format!r}. Use 'yolo' or 'coco'."
+            )
+
+        from ..fiftyone_hub.utils import resolve_label_field, _detect_container_type
+        from .fo_extract import build_class_map, extract_annotations
+
+        output_path = Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Resolve label field and container type
+        resolved_field = resolve_label_field(dataset, label_field)
+        container_type = _detect_container_type(dataset, resolved_field)
+
+        # Build class mapping
+        class_map = build_class_map(dataset.classes)
+        class_list = list(class_map.keys())
+        if not class_list:
+            logger.warning("No classes found in dataset — tiling without annotations")
+
+        # Determine splits
+        has_splits = dataset.has_sample_field("split")
+        if has_splits:
+            split_names = dataset.distinct("split")
+        else:
+            split_names = ["train"]
+
+        # Bulk-extract all fields
+        sub_field = f"{resolved_field}.{container_type}"
+        fields = ["filepath", "metadata.width", "metadata.height", sub_field]
+        if has_splits:
+            fields.append("split")
+
+        bulk_data = dataset.values(fields)
+        filepaths = bulk_data[0]
+        widths = bulk_data[1]
+        heights = bulk_data[2]
+        all_labels = bulk_data[3]
+        splits = bulk_data[4] if has_splits else ["train"] * len(filepaths)
+
+        num_samples = len(filepaths)
+        logger.info(
+            "Tiling FiftyOne dataset '%s' (%d samples, tile_size=%d, format=%s)",
+            getattr(dataset, "name", "view"),
+            num_samples,
+            self.config.tile_size,
+            output_format,
+        )
+
+        # Convert annotations to plain-Python dicts per sample
+        sample_annotations = []
+        for i in range(num_samples):
+            anns = extract_annotations(
+                all_labels[i],
+                container_type=container_type,
+                class_map=class_map,
+                img_w=widths[i] or 0,
+                img_h=heights[i] or 0,
+            )
+            sample_annotations.append(anns)
+
+        # Estimate pad width
+        pad_width = self._estimate_pad_width(
+            [Path(fp) for fp in filepaths[:5]]
+        )
+
+        cfg_dict = self.config.to_dict()
+
+        # Group by split and dispatch workers
+        for split_name in split_names:
+            indices = [
+                i for i in range(num_samples) if splits[i] == split_name
+            ]
+            if not indices:
+                continue
+
+            tasks = []
+            for i in indices:
+                tasks.append((
+                    filepaths[i],
+                    sample_annotations[i],
+                    str(output_path),
+                    split_name,
+                    Path(filepaths[i]).stem,
+                    pad_width,
+                    class_list,
+                    cfg_dict,
+                    output_format,
+                ))
+
+            num_procs = optimal_process_count(
+                len(tasks), self.config.max_processes,
+            )
+
+            total_positive = 0
+            total_negative = 0
+            all_coco_entries: List[Dict] = []
+
+            if num_procs <= 1:
+                for task in tqdm(
+                    tasks,
+                    desc=f"  {split_name}",
+                    disable=not self.verbose,
+                ):
+                    pos, neg, coco_entries = tile_single_fo_sample(task)
+                    total_positive += pos
+                    total_negative += neg
+                    all_coco_entries.extend(coco_entries)
+            else:
+                logger.info(
+                    "Tiling %s with %d workers (%d samples)",
+                    split_name, num_procs, len(tasks),
+                )
+                with ProcessPoolExecutor(max_workers=num_procs) as pool:
+                    futures = {
+                        pool.submit(tile_single_fo_sample, t): t
+                        for t in tasks
+                    }
+                    for future in tqdm(
+                        as_completed(futures),
+                        total=len(futures),
+                        desc=f"  {split_name}",
+                        disable=not self.verbose,
+                    ):
+                        pos, neg, coco_entries = future.result()
+                        total_positive += pos
+                        total_negative += neg
+                        all_coco_entries.extend(coco_entries)
+
+            # Post-process output
+            if output_format == "yolo":
+                lbl_dir = output_path / "labels" / split_name
+                img_dir = output_path / "images" / split_name
+                kept_neg = self._apply_negative_sampling(
+                    lbl_dir, img_dir, total_positive, total_negative,
+                )
+                logger.info(
+                    "Split %s: %d positive, %d negative kept",
+                    split_name, total_positive, kept_neg,
+                )
+            elif output_format == "coco":
+                self._assemble_coco_json(
+                    all_coco_entries, class_map, split_name, output_path,
+                    total_positive, total_negative,
+                )
+
+        # Write data.yaml for YOLO
+        if output_format == "yolo":
+            class_names = {v: k for k, v in class_map.items()}
+            create_data_yaml(output_path, class_names, split_names)
+
+        logger.info("FiftyOne tiling complete -> %s", output_path)
+
+        # Reimport
+        result = None
+        if reimport:
+            result = self._reimport_fo(
+                output_path, output_format, dataset, dataset_name,
+            )
+
+        return result
+
+    def _assemble_coco_json(
+        self,
+        coco_entries: List[Dict],
+        class_map: Dict[str, int],
+        split_name: str,
+        output_path: Path,
+        total_positive: int,
+        total_negative: int,
+    ) -> None:
+        """Assemble COCO JSON from worker entries and apply negative sampling."""
+        categories = [
+            {"id": idx + 1, "name": name, "supercategory": ""}
+            for name, idx in sorted(class_map.items(), key=lambda x: x[1])
+        ]
+
+        images = []
+        annotations = []
+        img_counter = 1
+        ann_counter = 1
+
+        for entry in coco_entries:
+            img_entry = entry["image"]
+            img_entry["id"] = img_counter
+            images.append(img_entry)
+
+            for ann in entry["annotations"]:
+                ann["id"] = ann_counter
+                ann["image_id"] = img_counter
+                annotations.append(ann)
+                ann_counter += 1
+
+            img_counter += 1
+
+        # Apply negative sampling
+        images, annotations = self._apply_negative_sampling_coco(
+            images, annotations, total_positive, total_negative,
+        )
+
+        ann_dir = output_path / "annotations"
+        ann_dir.mkdir(parents=True, exist_ok=True)
+        out_json = ann_dir / f"instances_{split_name}.json"
+        with open(out_json, "w") as fh:
+            json.dump(
+                {
+                    "images": images,
+                    "annotations": annotations,
+                    "categories": categories,
+                },
+                fh,
+                indent=2,
+            )
+
+        logger.info(
+            "Split %s: %d tiles (%d annotated)",
+            split_name, len(images), total_positive,
+        )
+
+    def _reimport_fo(
+        self,
+        output_path: Path,
+        output_format: str,
+        source_dataset,
+        dataset_name: Optional[str],
+    ) -> Optional[DatasetInfo]:
+        """Reimport tiled output into FiftyOne."""
+        from ..fiftyone_hub.loader import FiftyOneDatasetLoader
+
+        if dataset_name is None:
+            src_name = getattr(source_dataset, "name", "dataset")
+            dataset_name = f"{src_name}_tiled_{self.config.tile_size}"
+
+        fmt = DatasetFormat(output_format)
+        loader = FiftyOneDatasetLoader(verbose=self.verbose)
+
+        logger.info(
+            "Reimporting tiled dataset as '%s'", dataset_name,
+        )
+        loader.load(
+            output_path,
+            dataset_name,
+            format=fmt,
+            persistent=True,
+            overwrite=True,
+        )
+
+        # Load and return DatasetInfo
+        out_loader = DatasetLoader(output_path, verbose=False)
+        return out_loader.load_dataset(format=fmt)
 
     # ------------------------------------------------------------------
     # Padding width calculation
