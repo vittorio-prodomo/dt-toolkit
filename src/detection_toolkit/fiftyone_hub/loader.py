@@ -86,7 +86,29 @@ class FiftyOneDatasetLoader:
 
         # Detect format + splits via the core loader
         core_loader = DatasetLoader(dataset_path, verbose=self.verbose)
-        info = core_loader.load_dataset(format=format)
+        try:
+            info = core_loader.load_dataset(format=format)
+        except (ValueError, FileNotFoundError):
+            if format is not None:
+                raise
+            # Fall back to plain image directory (unlabeled)
+            logger.info(
+                "No YOLO/COCO format detected; importing as unlabeled "
+                "image directory: %s", dataset_path,
+            )
+            fo_dataset = fo.Dataset.from_images_dir(
+                str(dataset_path),
+                name=dataset_name,
+                persistent=persistent,
+            )
+            fo_dataset.compute_metadata()
+            if create_thumbs:
+                create_thumbnails(fo_dataset, dataset_path, thumbnail_size)
+            logger.info(
+                "Dataset '%s' ready — %d samples",
+                dataset_name, len(fo_dataset),
+            )
+            return fo_dataset
 
         logger.info(
             "Detected %s format with %d splits: %s",

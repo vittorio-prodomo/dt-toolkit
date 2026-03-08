@@ -3,8 +3,12 @@
 
 Usage::
 
-    python -m detection_toolkit.scripts.import_fo disk <path> <name> [opts]
+    python -m detection_toolkit.scripts.import_fo disk <path> [name] [opts]
     python -m detection_toolkit.scripts.import_fo cvat <name> [opts]
+
+The ``disk`` subcommand auto-detects YOLO and COCO formats.  If neither
+is found, the directory is imported as a plain (unlabeled) image dataset.
+The ``name`` argument is optional and defaults to the directory name.
 """
 
 import argparse
@@ -47,13 +51,16 @@ def parse_args(argv=None):
     # ---- disk (existing behaviour) ------------------------------------
     disk = sub.add_parser(
         "disk",
-        help="Import an on-disk YOLO/COCO dataset.",
-        description="Import an on-disk YOLO/COCO dataset into FiftyOne.",
+        help="Import an on-disk dataset (YOLO, COCO, or plain images).",
+        description="Import an on-disk dataset into FiftyOne.\n\n"
+                    "Supports YOLO and COCO formats (auto-detected), as well\n"
+                    "as plain directories of images (unlabeled datasets).",
         formatter_class=formatter_class(raw_text=True),
     )
     disk.add_argument("dataset", type=Path,
                       help="Path to dataset root directory.")
-    disk.add_argument("name", type=str, help="FiftyOne dataset name.")
+    disk.add_argument("name", type=str, nargs="?", default=None,
+                      help="FiftyOne dataset name (default: directory name).")
     disk.add_argument(
         "--format", "-f",
         choices=["yolo", "coco"],
@@ -186,6 +193,9 @@ def main(argv=None):
     loader = FiftyOneDatasetLoader(verbose=not args.quiet)
 
     if args.subcommand == "disk":
+        if args.name is None:
+            args.name = args.dataset.resolve().name
+
         from detection_toolkit.core.models import DatasetFormat
 
         fmt = DatasetFormat(args.format) if args.format else None
@@ -236,7 +246,7 @@ def main(argv=None):
     print(f"  Dataset:  {dataset.name}")
     print(f"  Samples:  {len(dataset)}")
     print(f"  Media:    {dataset.media_type}")
-    if args.subcommand == "disk":
+    if args.subcommand == "disk" and dataset.has_sample_field("split"):
         splits = dataset.distinct("split")
         if splits:
             print(f"  Splits:   {splits}")
