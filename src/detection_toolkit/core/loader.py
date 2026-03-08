@@ -34,7 +34,7 @@ def _normalise_split(name: str) -> str:
 
 
 class DatasetLoader:
-    """Load YOLO or COCO datasets with automatic format and split detection.
+    """Detect and load on-disk datasets (YOLO, COCO) with automatic format and split detection.
 
     Usage::
 
@@ -94,6 +94,9 @@ class DatasetLoader:
     ) -> DatasetInfo:
         """Load a full dataset into a :class:`DatasetInfo` object.
 
+        Only YOLO and COCO formats are supported here.  For CVAT Image
+        datasets, use :class:`~detection_toolkit.fiftyone_hub.loader.FiftyOneDatasetLoader`.
+
         Args:
             format: If ``None``, the format is auto-detected.
         """
@@ -104,7 +107,11 @@ class DatasetLoader:
             return self._load_yolo_dataset()
         if format == DatasetFormat.COCO:
             return self._load_coco_dataset()
-        raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(
+            f"Format '{format.value}' is not supported by "
+            "DatasetLoader.load_dataset(). Use FiftyOneDatasetLoader.load() "
+            "for CVAT datasets."
+        )
 
     # ==================================================================
     # YOLO loading
