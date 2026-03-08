@@ -1,7 +1,5 @@
 """Tests for dt-tile CLI argument parsing."""
 
-import pytest
-
 
 def test_parse_fo_flag():
     """--fo flag sets fo attribute."""

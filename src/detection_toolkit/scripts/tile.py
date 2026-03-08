@@ -15,7 +15,6 @@ Usage::
         --tile-size 640 --to coco
 """
 
-import argparse
 import logging
 import sys
 from pathlib import Path
