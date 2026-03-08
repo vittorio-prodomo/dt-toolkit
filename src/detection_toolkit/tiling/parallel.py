@@ -99,7 +99,7 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
                 tile_name = f"{img_path.stem}_tile_{idx:0{pad_width}d}"
 
                 # Clip annotations to tile
-                tile_anns = _clip_annotations_yolo(
+                tile_anns = _clip_annotations(
                     annotations, tx, ty, tw, th, cfg,
                 )
 
@@ -220,7 +220,7 @@ def _parse_yolo_labels(
     return annotations
 
 
-def _clip_annotations_yolo(
+def _clip_annotations(
     annotations: List[Dict],
     tx: int,
     ty: int,
@@ -228,7 +228,12 @@ def _clip_annotations_yolo(
     th: int,
     cfg,
 ) -> List[Dict]:
-    """Clip annotations to a tile and filter by area ratio."""
+    """Clip annotation dicts to a tile and filter by area ratio.
+
+    Works with annotation dicts from both YOLO label parsing and FiftyOne
+    extraction — both use the ``{class_id, type, bbox/polygon}`` format.
+    """
+    from shapely.geometry import Polygon as ShapelyPolygon
     from .geometry import (
         bbox_area_ratio,
         clip_bbox_to_tile,
@@ -253,7 +258,6 @@ def _clip_annotations_yolo(
             local_points = to_tile_coords(clipped_polys[0], tx, ty)
             for poly in clipped_polys[1:]:
                 candidate = to_tile_coords(poly, tx, ty)
-                from shapely.geometry import Polygon as ShapelyPolygon
                 if ShapelyPolygon(candidate).area > ShapelyPolygon(local_points).area:
                     local_points = candidate
 
@@ -388,8 +392,8 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
     img_out = output_dir / "images" / split_name
     img_out.mkdir(parents=True, exist_ok=True)
 
-    lbl_out = output_dir / "labels" / split_name
     if output_format == "yolo":
+        lbl_out = output_dir / "labels" / split_name
         lbl_out.mkdir(parents=True, exist_ok=True)
 
     positive = 0
@@ -410,7 +414,7 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
                 tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
 
                 # Clip annotations to tile
-                tile_anns = _clip_annotations_fo(
+                tile_anns = _clip_annotations(
                     annotations, tx, ty, tw, th, cfg,
                 )
 
@@ -459,72 +463,6 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
         return (0, 0, [])
 
     return (positive, negative, coco_entries)
-
-
-def _clip_annotations_fo(
-    annotations: List[Dict],
-    tx: int,
-    ty: int,
-    tw: int,
-    th: int,
-    cfg,
-) -> List[Dict]:
-    """Clip FiftyOne-extracted annotation dicts to a tile.
-
-    Same logic as :func:`_clip_annotations_yolo` but works with the generic
-    annotation dicts produced by
-    :func:`~detection_toolkit.tiling.fo_extract.extract_annotations`.
-    """
-    from .geometry import (
-        bbox_area_ratio,
-        clip_bbox_to_tile,
-        clip_polygon_to_tile,
-        polygon_area_ratio,
-        to_tile_coords,
-    )
-
-    result: List[Dict] = []
-
-    for ann in annotations:
-        if ann["type"] == "polygon":
-            clipped_polys = clip_polygon_to_tile(
-                ann["polygon"], tx, ty, tw, th,
-                densify_factor=cfg.densify_factor,
-                smoothing_tolerance=cfg.smoothing_tolerance,
-            )
-            if not clipped_polys:
-                continue
-
-            # Take the largest polygon
-            local_points = to_tile_coords(clipped_polys[0], tx, ty)
-            for poly in clipped_polys[1:]:
-                candidate = to_tile_coords(poly, tx, ty)
-                from shapely.geometry import Polygon as ShapelyPolygon
-                if ShapelyPolygon(candidate).area > ShapelyPolygon(local_points).area:
-                    local_points = candidate
-
-            ratio = polygon_area_ratio(local_points, tw, th)
-            if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
-                result.append({
-                    "class_id": ann["class_id"],
-                    "type": "polygon",
-                    "polygon": local_points,
-                })
-
-        elif ann["type"] == "bbox":
-            clipped = clip_bbox_to_tile(ann["bbox"], tx, ty, tw, th)
-            if clipped is None:
-                continue
-
-            ratio = bbox_area_ratio(clipped, tw, th)
-            if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
-                result.append({
-                    "class_id": ann["class_id"],
-                    "type": "bbox",
-                    "bbox": clipped,
-                })
-
-    return result
 
 
 def _to_coco_annotations(
