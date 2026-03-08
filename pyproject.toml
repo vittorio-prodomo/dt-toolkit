@@ -70,7 +70,7 @@ embed = [
     "torch",
 ]
 all = [
-    "detection-toolkit[fiftyone,train,train-detectron2,train-rfdetr,embed,reduce,cluster]",
+    "detection-toolkit[fiftyone,train,train-rfdetr,embed,reduce,cluster]",
 ]
 
 [project.scripts]
@@ -88,6 +88,7 @@ dt-coreset = "detection_toolkit.scripts.coreset:main"
 dt-reduce = "detection_toolkit.scripts.reduce:main"
 dt-cluster = "detection_toolkit.scripts.cluster:main"
 dt-embed = "detection_toolkit.scripts.embed:main"
+dt-thumbnails = "detection_toolkit.scripts.thumbnails:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
