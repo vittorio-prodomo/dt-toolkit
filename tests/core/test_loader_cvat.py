@@ -1,7 +1,6 @@
 """Tests for CVAT format detection in DatasetLoader."""
 
 import textwrap
-from pathlib import Path
 
 from detection_toolkit.core.loader import DatasetLoader
 from detection_toolkit.core.models import DatasetFormat
@@ -54,7 +53,7 @@ def test_no_false_positive_random_xml(tmp_path):
 def test_explicit_format_cvat(tmp_path):
     """Explicit DatasetFormat.CVAT is accepted even without probing."""
     (tmp_path / "labels.xml").write_text(MINIMAL_CVAT_XML)
-    loader = DatasetLoader(tmp_path)
+    DatasetLoader(tmp_path)  # just verify it doesn't raise
     fmt = DatasetFormat.CVAT
     # Should not raise — the enum value is valid
     assert fmt.value == "cvat"
