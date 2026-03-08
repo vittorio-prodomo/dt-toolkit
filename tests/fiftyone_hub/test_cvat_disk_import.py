@@ -2,9 +2,6 @@
 
 import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def _make_cvat_dataset(tmp_path, subset=None):
