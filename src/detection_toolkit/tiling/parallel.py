@@ -345,7 +345,7 @@ def _write_tile_image(
 # FiftyOne worker (top-level function, serialisation-safe)
 # ------------------------------------------------------------------
 
-def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List]:
+def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
     """Tile one image using pre-extracted FiftyOne annotations.
 
     Designed for :func:`ProcessPoolExecutor.map`.
@@ -388,13 +388,13 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List]:
     img_out = output_dir / "images" / split_name
     img_out.mkdir(parents=True, exist_ok=True)
 
+    lbl_out = output_dir / "labels" / split_name
     if output_format == "yolo":
-        lbl_out = output_dir / "labels" / split_name
         lbl_out.mkdir(parents=True, exist_ok=True)
 
     positive = 0
     negative = 0
-    coco_entries: List = []
+    coco_entries: List[Dict] = []
 
     try:
         with rasterio.open(img_path) as src:
@@ -545,16 +545,21 @@ def _to_coco_annotations(
 
         if ann["type"] == "polygon":
             points = ann["polygon"]
-            # Flatten to [x1, y1, x2, y2, ...]
+            # Flatten to [x1, y1, x2, y2, ...] with defensive clamping
             flat = []
             for x, y in points:
-                flat.extend([float(x), float(y)])
+                flat.extend([
+                    max(0.0, min(float(tile_w), float(x))),
+                    max(0.0, min(float(tile_h), float(y))),
+                ])
 
-            # Compute bbox from polygon bounds
+            # Compute bbox from polygon bounds (clamped)
             xs = [p[0] for p in points]
             ys = [p[1] for p in points]
-            x_min, x_max = min(xs), max(xs)
-            y_min, y_max = min(ys), max(ys)
+            x_min = max(0, min(xs))
+            y_min = max(0, min(ys))
+            x_max = min(tile_w, max(xs))
+            y_max = min(tile_h, max(ys))
             bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
 
             # Compute area via shoelace formula
