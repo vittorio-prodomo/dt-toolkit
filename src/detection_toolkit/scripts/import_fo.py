@@ -6,8 +6,9 @@ Usage::
     python -m detection_toolkit.scripts.import_fo disk <path> [name] [opts]
     python -m detection_toolkit.scripts.import_fo cvat <name> [opts]
 
-The ``disk`` subcommand auto-detects YOLO and COCO formats.  If neither
-is found, the directory is imported as a plain (unlabeled) image dataset.
+The ``disk`` subcommand auto-detects YOLO, COCO, and CVAT Image formats.
+If none is found, the directory is imported as a plain (unlabeled) image
+dataset.
 The ``name`` argument is optional and defaults to the directory name.
 """
 
@@ -51,10 +52,10 @@ def parse_args(argv=None):
     # ---- disk (existing behaviour) ------------------------------------
     disk = sub.add_parser(
         "disk",
-        help="Import an on-disk dataset (YOLO, COCO, or plain images).",
+        help="Import an on-disk dataset (YOLO, COCO, CVAT, or plain images).",
         description="Import an on-disk dataset into FiftyOne.\n\n"
-                    "Supports YOLO and COCO formats (auto-detected), as well\n"
-                    "as plain directories of images (unlabeled datasets).",
+                    "Supports YOLO, COCO, and CVAT Image formats (auto-detected),\n"
+                    "as well as plain directories of images (unlabeled datasets).",
         formatter_class=formatter_class(raw_text=True),
     )
     disk.add_argument("dataset", type=Path,
