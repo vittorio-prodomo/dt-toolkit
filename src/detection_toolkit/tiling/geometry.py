@@ -5,7 +5,7 @@ using Shapely for robust computational geometry.
 """
 
 import logging
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from shapely.geometry import MultiPolygon, Polygon, box
 
@@ -197,7 +197,7 @@ def to_tile_coords(
 
 
 def normalize_to_yolo(
-    points: PointList,
+    points: Sequence[Sequence[float]],
     tile_w: int,
     tile_h: int,
 ) -> List[float]:

@@ -1,6 +1,6 @@
 """Configuration dataclass for dataset tiling."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 

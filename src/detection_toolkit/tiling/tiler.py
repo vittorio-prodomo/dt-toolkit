@@ -9,7 +9,7 @@ import logging
 import random
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from tqdm import tqdm
@@ -20,11 +20,9 @@ from ..formats.yolo_utils import create_data_yaml
 from .config import TilingConfig
 from .geometry import (
     bbox_area_ratio,
-    bbox_to_yolo_center,
     clip_bbox_to_tile,
     clip_polygon_to_tile,
     compute_tile_grid,
-    normalize_to_yolo,
     polygon_area_ratio,
     to_tile_coords,
 )

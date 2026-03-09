@@ -46,20 +46,10 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
         ``(positive_tiles, negative_tiles)``
     """
     import rasterio
-    from rasterio.windows import Window
     warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
     from .config import TilingConfig
-    from .geometry import (
-        bbox_area_ratio,
-        bbox_to_yolo_center,
-        clip_bbox_to_tile,
-        clip_polygon_to_tile,
-        compute_tile_grid,
-        normalize_to_yolo,
-        polygon_area_ratio,
-        to_tile_coords,
-    )
+    from .geometry import compute_tile_grid
 
     (
         img_path_str,
