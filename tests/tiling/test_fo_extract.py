@@ -65,6 +65,42 @@ def test_extract_polylines():
     assert result[0]["polygons"] == [expected_points]
 
 
+def test_extract_polylines_multi_ring():
+    """Multi-ring polylines extract all rings into polygons list."""
+    from detection_toolkit.tiling.fo_extract import extract_annotations
+
+    sample_labels = {
+        "polylines": [
+            {
+                "label": "crack",
+                "points": [
+                    [(0.1, 0.1), (0.2, 0.1), (0.2, 0.2), (0.1, 0.2)],
+                    [(0.5, 0.5), (0.6, 0.5), (0.6, 0.6), (0.5, 0.6)],
+                ],
+            },
+        ]
+    }
+    class_map = {"crack": 0}
+
+    result = extract_annotations(
+        sample_labels,
+        container_type="polylines",
+        class_map=class_map,
+        img_w=1000,
+        img_h=1000,
+    )
+
+    assert len(result) == 1
+    assert result[0]["type"] == "polygon"
+    assert len(result[0]["polygons"]) == 2
+    assert result[0]["polygons"][0] == [
+        (100.0, 100.0), (200.0, 100.0), (200.0, 200.0), (100.0, 200.0),
+    ]
+    assert result[0]["polygons"][1] == [
+        (500.0, 500.0), (600.0, 500.0), (600.0, 600.0), (500.0, 600.0),
+    ]
+
+
 def test_extract_empty_labels():
     """None or empty label containers return empty list."""
     from detection_toolkit.tiling.fo_extract import extract_annotations

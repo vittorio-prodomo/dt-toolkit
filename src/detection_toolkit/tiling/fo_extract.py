@@ -84,18 +84,22 @@ def extract_annotations(
 
         elif container_type == "polylines":
             points_groups = item.get("points")
-            if not points_groups or not points_groups[0]:
+            if not points_groups:
                 continue
-            # FiftyOne Polyline.points: list of list of (x, y) relative
-            # We take the first (outer) ring.
-            rel_points = points_groups[0]
-            abs_points = [
-                (px * img_w, py * img_h) for px, py in rel_points
-            ]
+            # FiftyOne Polyline.points: list of rings, each a list of
+            # (x, y) relative coords.  Extract all non-empty rings.
+            abs_polygons = []
+            for ring in points_groups:
+                if ring:
+                    abs_polygons.append([
+                        (px * img_w, py * img_h) for px, py in ring
+                    ])
+            if not abs_polygons:
+                continue
             result.append({
                 "class_id": class_id,
                 "type": "polygon",
-                "polygons": [abs_points],
+                "polygons": abs_polygons,
             })
 
     return result
