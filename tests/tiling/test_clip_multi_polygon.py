@@ -52,7 +52,7 @@ class TestClipAnnotationsMultiPolygon:
         from detection_toolkit.tiling.config import TilingConfig
         from detection_toolkit.tiling.parallel import _clip_annotations
 
-        ann = [{"class_id": 0, "type": "polygon", "polygon": polygon}]
+        ann = [{"class_id": 0, "type": "polygon", "polygons": [polygon]}]
         cfg = TilingConfig(
             tile_size=max(tw, th),
             min_area_ratio=0.0,
@@ -82,7 +82,7 @@ class TestClipAnnotationsMultiPolygon:
         from detection_toolkit.tiling.config import TilingConfig
         from detection_toolkit.tiling.parallel import _clip_annotations
 
-        ann = [{"class_id": 0, "type": "polygon", "polygon": C_SHAPE}]
+        ann = [{"class_id": 0, "type": "polygon", "polygons": [C_SHAPE]}]
         # Set min_area_ratio high enough to drop the small arms
         cfg = TilingConfig(
             tile_size=200,

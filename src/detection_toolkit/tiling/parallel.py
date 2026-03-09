@@ -248,9 +248,7 @@ def _clip_annotations(
 
     for ann in annotations:
         if ann["type"] == "polygon":
-            # Clip every input sub-polygon and collect surviving pieces
-            # Support both old singular "polygon" and new plural "polygons" key
-            input_polys = ann.get("polygons") or [ann["polygon"]]
+            input_polys = ann["polygons"]
             kept: List[list] = []
             for input_poly in input_polys:
                 clipped_polys = clip_polygon_to_tile(
@@ -563,7 +561,6 @@ def _write_yolo_label(
     * ``"bridge"`` — connect via zero-width bridges into a single YOLO line.
     * ``"split"``  — emit each sub-polygon as a separate YOLO line.
     """
-    from cocoyolo.geometry import bridge_disjoint
     from .geometry import bbox_to_yolo_center, normalize_to_yolo
 
     lines: List[str] = []
@@ -573,6 +570,7 @@ def _write_yolo_label(
             sub_polys = ann["polygons"]
 
             if len(sub_polys) > 1 and disjoint_strategy == "bridge":
+                from cocoyolo.geometry import bridge_disjoint
                 # Convert tuples to lists for bridge_disjoint
                 point_lists = [
                     [[float(x), float(y)] for x, y in poly]

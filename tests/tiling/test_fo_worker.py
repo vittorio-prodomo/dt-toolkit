@@ -79,7 +79,7 @@ def test_tile_single_fo_sample_yolo_polygon(tmp_path):
         {
             "class_id": 0,
             "type": "polygon",
-            "polygon": [(20, 20), (80, 20), (80, 80), (20, 80)],
+            "polygons": [[(20, 20), (80, 20), (80, 80), (20, 80)]],
         },
     ]
 
