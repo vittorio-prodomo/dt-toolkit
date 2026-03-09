@@ -473,13 +473,13 @@ def _to_coco_annotations(
     """
     coco_anns: List[Dict] = []
 
+    from .geometry import bbox_from_polygons, polygon_area
+
     for ann in tile_anns:
         category_id = ann["class_id"] + 1  # COCO is 1-based
 
         if ann["type"] == "polygon":
             all_flat: List[list] = []
-            all_xs: List[float] = []
-            all_ys: List[float] = []
             total_area = 0.0
 
             for points in ann["polygons"]:
@@ -489,18 +489,11 @@ def _to_coco_annotations(
                     cy = max(0.0, min(float(tile_h), float(y)))
                     flat.extend([cx, cy])
                 all_flat.append(flat)
+                total_area += polygon_area(points)
 
-                xs = [p[0] for p in points]
-                ys = [p[1] for p in points]
-                all_xs.extend(xs)
-                all_ys.extend(ys)
-                total_area += _shoelace_area(points)
-
-            x_min = max(0, min(all_xs))
-            y_min = max(0, min(all_ys))
-            x_max = min(tile_w, max(all_xs))
-            y_max = min(tile_h, max(all_ys))
-            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+            bbox = bbox_from_polygons(
+                ann["polygons"], clamp_w=tile_w, clamp_h=tile_h,
+            )
 
             coco_anns.append({
                 "category_id": category_id,
@@ -520,19 +513,6 @@ def _to_coco_annotations(
             })
 
     return coco_anns
-
-
-def _shoelace_area(points: List[Tuple[float, float]]) -> float:
-    """Compute polygon area using the shoelace formula."""
-    n = len(points)
-    if n < 3:
-        return 0.0
-    area = 0.0
-    for i in range(n):
-        x0, y0 = points[i]
-        x1, y1 = points[(i + 1) % n]
-        area += x0 * y1 - x1 * y0
-    return abs(area) / 2.0
 
 
 def _write_yolo_label(

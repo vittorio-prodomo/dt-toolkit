@@ -761,20 +761,14 @@ class DatasetTiler:
                         all_local.append(local)
 
                 if all_flat:
-                    from ..core.annotations import AnnotationHandler
+                    from .geometry import bbox_from_polygons, polygon_area
 
                     total_area = sum(
-                        AnnotationHandler.polygon_area(lc) for lc in all_local
+                        polygon_area(lc) for lc in all_local
                     )
-                    # Bounding box spans all sub-polygons
-                    all_xs = [x for lc in all_local for x, _ in lc]
-                    all_ys = [y for lc in all_local for _, y in lc]
-                    bbox = [
-                        max(0, min(all_xs)),
-                        max(0, min(all_ys)),
-                        min(tw, max(all_xs)) - max(0, min(all_xs)),
-                        min(th, max(all_ys)) - max(0, min(all_ys)),
-                    ]
+                    bbox = bbox_from_polygons(
+                        all_local, clamp_w=tw, clamp_h=th,
+                    )
 
                     result.append({
                         "category_id": ann["category_id"],

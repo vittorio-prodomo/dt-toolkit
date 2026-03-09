@@ -287,6 +287,38 @@ def compute_tile_grid(
 # Area helpers
 # ------------------------------------------------------------------
 
+
+def polygon_area(points: Sequence[Sequence[float]]) -> float:
+    """Compute polygon area using the shoelace formula."""
+    n = len(points)
+    if n < 3:
+        return 0.0
+    area = 0.0
+    for i in range(n):
+        x0, y0 = points[i][0], points[i][1]
+        x1, y1 = points[(i + 1) % n][0], points[(i + 1) % n][1]
+        area += x0 * y1 - x1 * y0
+    return abs(area) / 2.0
+
+
+def bbox_from_polygons(
+    polygons: Sequence[Sequence[Sequence[float]]],
+    clamp_w: float = float("inf"),
+    clamp_h: float = float("inf"),
+) -> List[float]:
+    """Compute a COCO-style ``[x, y, w, h]`` bbox spanning all *polygons*.
+
+    Optionally clamp to ``[0, clamp_w]`` × ``[0, clamp_h]``.
+    """
+    all_xs = [pt[0] for poly in polygons for pt in poly]
+    all_ys = [pt[1] for poly in polygons for pt in poly]
+    x_min = max(0.0, min(all_xs))
+    y_min = max(0.0, min(all_ys))
+    x_max = min(clamp_w, max(all_xs))
+    y_max = min(clamp_h, max(all_ys))
+    return [x_min, y_min, x_max - x_min, y_max - y_min]
+
+
 def polygon_area_ratio(
     points: PointList,
     tile_w: int,
