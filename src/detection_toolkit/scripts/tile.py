@@ -88,6 +88,15 @@ def parse_args(argv=None):
     p.add_argument("--smoothing-tolerance", "-s", type=float, default=0.1, metavar="F",
                    help="Simplify clipped polygons with this tolerance in pixels "
                         "to reduce point count (default: 0.1).")
+    p.add_argument("--disjoint-strategy", choices=["bridge", "split"],
+                   default="bridge",
+                   help="How to handle annotations that become multiple disjoint "
+                        "polygons after tile clipping (e.g. concave shapes split "
+                        "by a tile boundary). 'bridge' connects sub-polygons via "
+                        "zero-width bridges into a single polygon (default). "
+                        "'split' emits each sub-polygon as a separate instance. "
+                        "Only affects YOLO output; COCO natively supports "
+                        "multi-polygon annotations.")
 
     # Negative sampling
     p.add_argument("--negative-ratio", "-n", type=float, default=0.1, metavar="F",
@@ -157,6 +166,7 @@ def main(argv=None):
             random_seed=args.random_seed,
             fraction=args.fraction,
             flatten=args.flatten,
+            disjoint_strategy=args.disjoint_strategy,
         )
 
     output_path = Path(args.output)

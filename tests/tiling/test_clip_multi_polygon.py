@@ -281,3 +281,29 @@ class TestClipCOCOAnnotationsMultiPolygon:
         assert len(result) == 1, "Still one annotation"
         # Each source polygon clips cleanly → 2 sub-polygons
         assert len(result[0]["segmentation"]) >= 2
+
+
+class TestCLIDisjointStrategy:
+    """CLI --disjoint-strategy argument."""
+
+    def test_default_is_bridge(self):
+        from detection_toolkit.scripts.tile import parse_args
+
+        args = parse_args(["some_input", "some_output"])
+        assert args.disjoint_strategy == "bridge"
+
+    def test_accepts_split(self):
+        from detection_toolkit.scripts.tile import parse_args
+
+        args = parse_args([
+            "some_input", "some_output", "--disjoint-strategy", "split",
+        ])
+        assert args.disjoint_strategy == "split"
+
+    def test_rejects_invalid(self):
+        from detection_toolkit.scripts.tile import parse_args
+
+        with pytest.raises(SystemExit):
+            parse_args([
+                "some_input", "some_output", "--disjoint-strategy", "nope",
+            ])
