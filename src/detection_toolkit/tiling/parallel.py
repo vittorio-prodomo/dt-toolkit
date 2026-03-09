@@ -233,7 +233,6 @@ def _clip_annotations(
     Works with annotation dicts from both YOLO label parsing and FiftyOne
     extraction — both use the ``{class_id, type, bbox/polygon}`` format.
     """
-    from shapely.geometry import Polygon as ShapelyPolygon
     from .geometry import (
         bbox_area_ratio,
         clip_bbox_to_tile,
@@ -254,19 +253,19 @@ def _clip_annotations(
             if not clipped_polys:
                 continue
 
-            # Take the largest polygon
-            local_points = to_tile_coords(clipped_polys[0], tx, ty)
-            for poly in clipped_polys[1:]:
-                candidate = to_tile_coords(poly, tx, ty)
-                if ShapelyPolygon(candidate).area > ShapelyPolygon(local_points).area:
-                    local_points = candidate
+            # Keep every sub-polygon that passes the area filter
+            kept: List[list] = []
+            for poly in clipped_polys:
+                local = to_tile_coords(poly, tx, ty)
+                ratio = polygon_area_ratio(local, tw, th)
+                if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
+                    kept.append(local)
 
-            ratio = polygon_area_ratio(local_points, tw, th)
-            if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
+            if kept:
                 result.append({
                     "class_id": ann["class_id"],
                     "type": "polygon",
-                    "polygon": local_points,
+                    "polygons": kept,
                 })
 
         elif ann["type"] == "bbox":
