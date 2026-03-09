@@ -46,7 +46,7 @@ def extract_annotations(
         - ``class_id`` (int)
         - ``type`` (``"bbox"`` or ``"polygon"``)
         - ``bbox`` ([x, y, w, h] in absolute pixels) or
-          ``polygon`` ([(x, y), ...] in absolute pixels)
+          ``polygons`` ([[(x, y), ...], ...] in absolute pixels)
     """
     if sample_labels is None:
         return []
@@ -95,7 +95,7 @@ def extract_annotations(
             result.append({
                 "class_id": class_id,
                 "type": "polygon",
-                "polygon": abs_points,
+                "polygons": [abs_points],
             })
 
     return result

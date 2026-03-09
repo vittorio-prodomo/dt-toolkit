@@ -62,7 +62,7 @@ def test_extract_polylines():
     assert result[0]["class_id"] == 0
     assert result[0]["type"] == "polygon"
     expected_points = [(100.0, 100.0), (300.0, 200.0), (500.0, 100.0)]
-    assert result[0]["polygon"] == pytest.approx(expected_points)
+    assert result[0]["polygons"] == [expected_points]
 
 
 def test_extract_empty_labels():
