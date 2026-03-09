@@ -33,6 +33,16 @@ class TilingConfig:
         fraction: Process only this fraction of images (for quick tests).
         flatten: Place all unlabeled tiles in a single directory instead of
             preserving the source subdirectory structure.
+        disjoint_strategy: How to handle annotations that become multiple
+            disjoint polygons after tile clipping (e.g. concave shapes).
+
+            * ``"bridge"`` — connect sub-polygons via zero-width bridges
+              into a single polygon (default). Only affects YOLO output.
+            * ``"split"`` — emit each sub-polygon as a separate instance.
+              Only affects YOLO output.
+
+            COCO output natively supports multi-polygon segmentation, so
+            this setting has no effect on COCO output.
     """
 
     tile_size: int
