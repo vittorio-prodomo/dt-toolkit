@@ -49,6 +49,7 @@ class TilingConfig:
     random_seed: Optional[int] = None
     fraction: Optional[float] = None
     flatten: bool = False
+    disjoint_strategy: str = "bridge"
 
     def __post_init__(self) -> None:
         if self.tile_size <= 0:
@@ -80,6 +81,11 @@ class TilingConfig:
             )
         if self.fraction is not None and self.fraction <= 0:
             raise ValueError(f"fraction must be > 0, got {self.fraction}")
+        if self.disjoint_strategy not in ("bridge", "split"):
+            raise ValueError(
+                f"disjoint_strategy must be 'bridge' or 'split', "
+                f"got {self.disjoint_strategy!r}"
+            )
 
     def to_dict(self) -> Dict:
         """Serialise to a plain dict (pickle-safe for multiprocessing)."""
