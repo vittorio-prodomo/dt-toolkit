@@ -217,3 +217,67 @@ class TestToCOCOAnnotationsMultiPolygon:
         }
         result = _to_coco_annotations([ann], 100, 100, ["crack"])
         assert result[0]["area"] == pytest.approx(200.0)
+
+
+class TestClipCOCOAnnotationsMultiPolygon:
+    """_clip_coco_annotations groups sub-polygons under one annotation."""
+
+    def _make_tiler(self):
+        from detection_toolkit.tiling.config import TilingConfig
+        from detection_toolkit.tiling.tiler import DatasetTiler
+
+        cfg = TilingConfig(
+            tile_size=200,
+            min_area_ratio=0.0,
+            max_area_ratio=1.0,
+            densify_factor=0.0,
+            smoothing_tolerance=0.0,
+        )
+        return DatasetTiler(cfg, verbose=False)
+
+    def test_concave_polygon_stays_one_annotation(self):
+        tiler = self._make_tiler()
+
+        # C-shape as flat COCO polygon
+        flat_c = [
+            10, 10, 150, 10, 150, 40, 60, 40,
+            60, 160, 150, 160, 150, 190, 10, 190,
+        ]
+        ann = {
+            "category_id": 1,
+            "segmentation": [flat_c],
+            "bbox": [10, 10, 140, 180],
+            "area": 100,
+            "iscrowd": 0,
+        }
+
+        result = tiler._clip_coco_annotations(
+            [ann], tx=100, ty=0, tw=100, th=200, img_w=200, img_h=200,
+        )
+        assert len(result) == 1, "One source annotation → one output annotation"
+        seg = result[0]["segmentation"]
+        assert isinstance(seg, list)
+        assert len(seg) == 2, "Two sub-polygons in segmentation list"
+        assert result[0]["category_id"] == 1
+
+    def test_already_multi_polygon_stays_one_annotation(self):
+        """COCO annotation that already has two polygons in segmentation."""
+        tiler = self._make_tiler()
+
+        # Two separate horizontal bars fully inside the tile
+        poly1 = [110, 10, 180, 10, 180, 40, 110, 40]
+        poly2 = [110, 160, 180, 160, 180, 190, 110, 190]
+        ann = {
+            "category_id": 2,
+            "segmentation": [poly1, poly2],
+            "bbox": [110, 10, 70, 180],
+            "area": 200,
+            "iscrowd": 0,
+        }
+
+        result = tiler._clip_coco_annotations(
+            [ann], tx=100, ty=0, tw=100, th=200, img_w=200, img_h=200,
+        )
+        assert len(result) == 1, "Still one annotation"
+        # Each source polygon clips cleanly → 2 sub-polygons
+        assert len(result[0]["segmentation"]) >= 2

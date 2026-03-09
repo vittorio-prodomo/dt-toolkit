@@ -729,7 +729,11 @@ class DatasetTiler:
             seg = ann.get("segmentation")
 
             if seg and isinstance(seg, list) and seg:
-                # Polygon segmentation
+                # Polygon segmentation — collect all sub-polygons,
+                # then emit ONE annotation with multi-polygon segmentation.
+                all_flat: list = []
+                all_local: list = []
+
                 for flat_poly in seg:
                     points = [
                         (flat_poly[i], flat_poly[i + 1])
@@ -749,25 +753,38 @@ class DatasetTiler:
                         if not (self.config.min_area_ratio <= ratio <= self.config.max_area_ratio):
                             continue
 
-                        # Build new annotation
                         flat = []
                         for x, y in local:
                             flat.extend([
                                 max(0, min(tw, x)),
                                 max(0, min(th, y)),
                             ])
+                        all_flat.append(flat)
+                        all_local.append(local)
 
-                        from ..core.annotations import AnnotationHandler
-                        bbox = AnnotationHandler.recompute_bbox_from_polygon(local)
-                        area = AnnotationHandler.polygon_area(local)
+                if all_flat:
+                    from ..core.annotations import AnnotationHandler
 
-                        result.append({
-                            "category_id": ann["category_id"],
-                            "segmentation": [flat],
-                            "bbox": bbox,
-                            "area": area,
-                            "iscrowd": ann.get("iscrowd", 0),
-                        })
+                    total_area = sum(
+                        AnnotationHandler.polygon_area(lc) for lc in all_local
+                    )
+                    # Bounding box spans all sub-polygons
+                    all_xs = [x for lc in all_local for x, _ in lc]
+                    all_ys = [y for lc in all_local for _, y in lc]
+                    bbox = [
+                        max(0, min(all_xs)),
+                        max(0, min(all_ys)),
+                        min(tw, max(all_xs)) - max(0, min(all_xs)),
+                        min(th, max(all_ys)) - max(0, min(all_ys)),
+                    ]
+
+                    result.append({
+                        "category_id": ann["category_id"],
+                        "segmentation": all_flat,
+                        "bbox": bbox,
+                        "area": total_area,
+                        "iscrowd": ann.get("iscrowd", 0),
+                    })
 
             elif seg and isinstance(seg, dict):
                 # RLE — crop the mask to tile
