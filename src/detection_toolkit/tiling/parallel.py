@@ -540,20 +540,47 @@ def _write_yolo_label(
     annotations: List[Dict],
     tile_w: int,
     tile_h: int,
+    disjoint_strategy: str = "bridge",
 ) -> None:
-    """Write clipped annotations as a YOLO label file."""
+    """Write clipped annotations as a YOLO label file.
+
+    Polygon annotations use the ``"polygons"`` key (list of point lists).
+    When an annotation has multiple sub-polygons (from clipping a concave
+    shape), *disjoint_strategy* controls the output:
+
+    * ``"bridge"`` — connect via zero-width bridges into a single YOLO line.
+    * ``"split"``  — emit each sub-polygon as a separate YOLO line.
+    """
+    from cocoyolo.geometry import bridge_disjoint
     from .geometry import bbox_to_yolo_center, normalize_to_yolo
 
     lines: List[str] = []
     for ann in annotations:
         cid = ann["class_id"]
         if ann["type"] == "polygon":
-            coords = normalize_to_yolo(ann["polygon"], tile_w, tile_h)
-            # Remove closing point if present (YOLO polygons are not closed)
-            if len(coords) >= 4 and coords[0] == coords[-2] and coords[1] == coords[-1]:
-                coords = coords[:-2]
-            coord_str = " ".join(f"{c:.6f}" for c in coords)
-            lines.append(f"{cid} {coord_str}")
+            sub_polys = ann["polygons"]
+
+            if len(sub_polys) > 1 and disjoint_strategy == "bridge":
+                # Convert tuples to lists for bridge_disjoint
+                point_lists = [
+                    [[float(x), float(y)] for x, y in poly]
+                    for poly in sub_polys
+                ]
+                bridged = bridge_disjoint(point_lists)
+                coords = normalize_to_yolo(bridged, tile_w, tile_h)
+                if len(coords) >= 4 and coords[0] == coords[-2] and coords[1] == coords[-1]:
+                    coords = coords[:-2]
+                coord_str = " ".join(f"{c:.6f}" for c in coords)
+                lines.append(f"{cid} {coord_str}")
+            else:
+                # Single polygon, or split strategy
+                for poly in sub_polys:
+                    coords = normalize_to_yolo(poly, tile_w, tile_h)
+                    if len(coords) >= 4 and coords[0] == coords[-2] and coords[1] == coords[-1]:
+                        coords = coords[:-2]
+                    coord_str = " ".join(f"{c:.6f}" for c in coords)
+                    lines.append(f"{cid} {coord_str}")
+
         elif ann["type"] == "bbox":
             yolo = bbox_to_yolo_center(ann["bbox"], tile_w, tile_h)
             coord_str = " ".join(f"{c:.6f}" for c in yolo)

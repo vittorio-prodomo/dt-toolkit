@@ -101,3 +101,55 @@ class TestClipAnnotationsMultiPolygon:
             for x, y in poly:
                 assert 0 <= x <= TILE_W, f"x={x} out of tile bounds"
                 assert 0 <= y <= TILE_H, f"y={y} out of tile bounds"
+
+
+class TestWriteYoloLabelMultiPolygon:
+    """_write_yolo_label handles multi-polygon annotations."""
+
+    def _make_multi_polygon_ann(self):
+        """Two small disjoint rectangles in tile-local coords."""
+        return {
+            "class_id": 0,
+            "type": "polygon",
+            "polygons": [
+                [(10, 10), (40, 10), (40, 30), (10, 30)],
+                [(10, 70), (40, 70), (40, 90), (10, 90)],
+            ],
+        }
+
+    def test_bridge_produces_single_line(self, tmp_path):
+        from detection_toolkit.tiling.parallel import _write_yolo_label
+
+        label_path = tmp_path / "tile.txt"
+        ann = self._make_multi_polygon_ann()
+        _write_yolo_label(label_path, [ann], 100, 100, disjoint_strategy="bridge")
+
+        lines = [l for l in label_path.read_text().strip().split("\n") if l]
+        assert len(lines) == 1, "bridge → single YOLO line"
+
+    def test_split_produces_two_lines(self, tmp_path):
+        from detection_toolkit.tiling.parallel import _write_yolo_label
+
+        label_path = tmp_path / "tile.txt"
+        ann = self._make_multi_polygon_ann()
+        _write_yolo_label(label_path, [ann], 100, 100, disjoint_strategy="split")
+
+        lines = [l for l in label_path.read_text().strip().split("\n") if l]
+        assert len(lines) == 2, "split → one line per sub-polygon"
+        # Both lines should have the same class_id
+        assert all(l.startswith("0 ") for l in lines)
+
+    def test_single_polygon_unchanged(self, tmp_path):
+        from detection_toolkit.tiling.parallel import _write_yolo_label
+
+        label_path = tmp_path / "tile.txt"
+        ann = {
+            "class_id": 1,
+            "type": "polygon",
+            "polygons": [[(10, 10), (90, 10), (90, 90), (10, 90)]],
+        }
+        _write_yolo_label(label_path, [ann], 100, 100, disjoint_strategy="bridge")
+
+        lines = [l for l in label_path.read_text().strip().split("\n") if l]
+        assert len(lines) == 1
+        assert lines[0].startswith("1 ")
