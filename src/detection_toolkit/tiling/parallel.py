@@ -481,32 +481,36 @@ def _to_coco_annotations(
         category_id = ann["class_id"] + 1  # COCO is 1-based
 
         if ann["type"] == "polygon":
-            points = ann["polygon"]
-            # Flatten to [x1, y1, x2, y2, ...] with defensive clamping
-            flat = []
-            for x, y in points:
-                flat.extend([
-                    max(0.0, min(float(tile_w), float(x))),
-                    max(0.0, min(float(tile_h), float(y))),
-                ])
+            all_flat: List[list] = []
+            all_xs: List[float] = []
+            all_ys: List[float] = []
+            total_area = 0.0
 
-            # Compute bbox from polygon bounds (clamped)
-            xs = [p[0] for p in points]
-            ys = [p[1] for p in points]
-            x_min = max(0, min(xs))
-            y_min = max(0, min(ys))
-            x_max = min(tile_w, max(xs))
-            y_max = min(tile_h, max(ys))
+            for points in ann["polygons"]:
+                flat = []
+                for x, y in points:
+                    cx = max(0.0, min(float(tile_w), float(x)))
+                    cy = max(0.0, min(float(tile_h), float(y)))
+                    flat.extend([cx, cy])
+                all_flat.append(flat)
+
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                all_xs.extend(xs)
+                all_ys.extend(ys)
+                total_area += _shoelace_area(points)
+
+            x_min = max(0, min(all_xs))
+            y_min = max(0, min(all_ys))
+            x_max = min(tile_w, max(all_xs))
+            y_max = min(tile_h, max(all_ys))
             bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
-
-            # Compute area via shoelace formula
-            area = _shoelace_area(points)
 
             coco_anns.append({
                 "category_id": category_id,
                 "bbox": bbox,
-                "area": area,
-                "segmentation": [flat],
+                "area": total_area,
+                "segmentation": all_flat,
                 "iscrowd": 0,
             })
 

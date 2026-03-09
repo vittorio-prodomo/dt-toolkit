@@ -153,3 +153,67 @@ class TestWriteYoloLabelMultiPolygon:
         lines = [l for l in label_path.read_text().strip().split("\n") if l]
         assert len(lines) == 1
         assert lines[0].startswith("1 ")
+
+
+class TestToCOCOAnnotationsMultiPolygon:
+    """_to_coco_annotations groups sub-polygons in segmentation list."""
+
+    def test_multi_polygon_in_segmentation(self):
+        from detection_toolkit.tiling.parallel import _to_coco_annotations
+
+        ann = {
+            "class_id": 0,
+            "type": "polygon",
+            "polygons": [
+                [(10, 10), (40, 10), (40, 30), (10, 30)],
+                [(10, 70), (40, 70), (40, 90), (10, 90)],
+            ],
+        }
+        result = _to_coco_annotations([ann], 100, 100, ["crack"])
+        assert len(result) == 1, "Multi-polygon → one COCO annotation"
+        seg = result[0]["segmentation"]
+        assert len(seg) == 2, "segmentation has two polygon lists"
+        assert result[0]["category_id"] == 1  # COCO is 1-based
+
+    def test_single_polygon_in_segmentation(self):
+        from detection_toolkit.tiling.parallel import _to_coco_annotations
+
+        ann = {
+            "class_id": 0,
+            "type": "polygon",
+            "polygons": [[(10, 10), (90, 10), (90, 90), (10, 90)]],
+        }
+        result = _to_coco_annotations([ann], 100, 100, ["crack"])
+        assert len(result) == 1
+        assert len(result[0]["segmentation"]) == 1
+
+    def test_bbox_covers_all_subpolygons(self):
+        from detection_toolkit.tiling.parallel import _to_coco_annotations
+
+        ann = {
+            "class_id": 0,
+            "type": "polygon",
+            "polygons": [
+                [(10, 10), (40, 10), (40, 30), (10, 30)],
+                [(10, 70), (40, 70), (40, 90), (10, 90)],
+            ],
+        }
+        result = _to_coco_annotations([ann], 100, 100, ["crack"])
+        bbox = result[0]["bbox"]
+        # bbox should span from (10,10) to (40,90) → [10, 10, 30, 80]
+        assert bbox[0] == 10 and bbox[1] == 10
+        assert bbox[2] == 30 and bbox[3] == 80
+
+    def test_area_sums_all_subpolygons(self):
+        from detection_toolkit.tiling.parallel import _to_coco_annotations
+
+        ann = {
+            "class_id": 0,
+            "type": "polygon",
+            "polygons": [
+                [(0, 0), (10, 0), (10, 10), (0, 10)],    # area = 100
+                [(20, 0), (30, 0), (30, 10), (20, 10)],   # area = 100
+            ],
+        }
+        result = _to_coco_annotations([ann], 100, 100, ["crack"])
+        assert result[0]["area"] == pytest.approx(200.0)
