@@ -113,7 +113,10 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
                 # Write tile label
                 tile_lbl_path = lbl_out / f"{tile_name}.txt"
                 if tile_anns:
-                    _write_yolo_label(tile_lbl_path, tile_anns, tw, th)
+                    _write_yolo_label(
+                        tile_lbl_path, tile_anns, tw, th,
+                        disjoint_strategy=cfg.disjoint_strategy,
+                    )
                     positive += 1
                 else:
                     # Empty label for negative tile
@@ -214,7 +217,7 @@ def _parse_yolo_labels(
                 annotations.append({
                     "class_id": class_id,
                     "type": "polygon",
-                    "polygon": points,
+                    "polygons": [points],
                 })
 
     return annotations
@@ -231,7 +234,7 @@ def _clip_annotations(
     """Clip annotation dicts to a tile and filter by area ratio.
 
     Works with annotation dicts from both YOLO label parsing and FiftyOne
-    extraction — both use the ``{class_id, type, bbox/polygon}`` format.
+    extraction — both use the ``{class_id, type, bbox/polygons}`` format.
     """
     from .geometry import (
         bbox_area_ratio,
@@ -245,21 +248,23 @@ def _clip_annotations(
 
     for ann in annotations:
         if ann["type"] == "polygon":
-            clipped_polys = clip_polygon_to_tile(
-                ann["polygon"], tx, ty, tw, th,
-                densify_factor=cfg.densify_factor,
-                smoothing_tolerance=cfg.smoothing_tolerance,
-            )
-            if not clipped_polys:
-                continue
-
-            # Keep every sub-polygon that passes the area filter
+            # Clip every input sub-polygon and collect surviving pieces
+            # Support both old singular "polygon" and new plural "polygons" key
+            input_polys = ann.get("polygons") or [ann["polygon"]]
             kept: List[list] = []
-            for poly in clipped_polys:
-                local = to_tile_coords(poly, tx, ty)
-                ratio = polygon_area_ratio(local, tw, th)
-                if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
-                    kept.append(local)
+            for input_poly in input_polys:
+                clipped_polys = clip_polygon_to_tile(
+                    input_poly, tx, ty, tw, th,
+                    densify_factor=cfg.densify_factor,
+                    smoothing_tolerance=cfg.smoothing_tolerance,
+                )
+                if not clipped_polys:
+                    continue
+                for poly in clipped_polys:
+                    local = to_tile_coords(poly, tx, ty)
+                    ratio = polygon_area_ratio(local, tw, th)
+                    if cfg.min_area_ratio <= ratio <= cfg.max_area_ratio:
+                        kept.append(local)
 
             if kept:
                 result.append({
@@ -428,7 +433,10 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
                 if output_format == "yolo":
                     tile_lbl_path = lbl_out / f"{tile_name}.txt"
                     if has_anns:
-                        _write_yolo_label(tile_lbl_path, tile_anns, tw, th)
+                        _write_yolo_label(
+                            tile_lbl_path, tile_anns, tw, th,
+                            disjoint_strategy=cfg.disjoint_strategy,
+                        )
                         positive += 1
                     else:
                         tile_lbl_path.write_text("")
