@@ -9,6 +9,7 @@ Usage::
 """
 
 import logging
+import os
 import sys
 
 from detection_toolkit.cli import make_parser
@@ -40,6 +41,8 @@ def parse_args(argv=None):
                    help="API endpoint URL (for 'api' backend).")
     p.add_argument("--instruction", default=None,
                    help="Instruction prompt for VLMs (for 'api' backend).")
+    p.add_argument("--gpu", default=None, metavar="ID",
+                   help="GPU device ID to use (e.g. 0, 1). Sets CUDA_VISIBLE_DEVICES.")
     _add_verbosity(p)
     return p.parse_args(argv)
 
@@ -66,6 +69,9 @@ def main(argv=None):
     else:
         level = logging.INFO
     logging.basicConfig(level=level, format="%(name)s - %(levelname)s - %(message)s")
+
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
     from detection_toolkit.embedding import EmbeddingComputer
 
