@@ -7,7 +7,6 @@ Usage::
     dt-split my_dataset --ratio 0.7 0.15 --group-by bridge_id
 """
 
-import argparse
 import logging
 import sys
 
