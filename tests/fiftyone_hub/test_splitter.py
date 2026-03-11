@@ -495,3 +495,96 @@ class TestCLIArgs:
 
         with pytest.raises(ValueError):
             _ratio_to_dict([0.5, 0.3, 0.3])  # too many values
+
+
+class TestEdgeCases:
+    """Tests for edge cases and warnings."""
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_existing_field_overwritten(
+        self, mock_resolve, mock_discover, mock_extract,
+    ):
+        """When split_field already exists, split() overwrites it."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.return_value = "ground_truth"
+        mock_discover.return_value = ["a"]
+
+        ids = [f"id_{i}" for i in range(10)]
+        vectors = np.ones((10, 2))
+        mock_extract.return_value = (ids, vectors, ["a", "_negative"])
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=10)
+        dataset.has_sample_field = MagicMock(return_value=True)
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        result = splitter.split(dataset)
+
+        dataset.set_values.assert_called_once()
+        assert sum(result.split_counts.values()) == 10
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_large_group_still_assigned(
+        self, mock_resolve, mock_discover, mock_extract,
+    ):
+        """A group larger than the smallest split target is still assigned."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.return_value = "ground_truth"
+        mock_discover.return_value = ["a"]
+
+        ids = [f"id_{i}" for i in range(10)]
+        vectors = np.ones((10, 2))
+        mock_extract.return_value = (ids, vectors, ["a", "_negative"])
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=10)
+
+        def has_field(f):
+            return True
+
+        dataset.has_sample_field = MagicMock(side_effect=has_field)
+        dataset.values = MagicMock(
+            return_value=["big"] * 8 + ["small"] * 2,
+        )
+
+        splitter = DatasetSplitter(
+            ratios={"train": 0.8, "val": 0.2},
+            group_by="source",
+        )
+        result = splitter.split(dataset)
+
+        assert sum(result.split_counts.values()) == 10
+        assert sum(result.group_counts.values()) == 2
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_single_image_dataset(
+        self, mock_resolve, mock_discover, mock_extract,
+    ):
+        """Dataset with one image assigns it to the largest split."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.return_value = "ground_truth"
+        mock_discover.return_value = ["a"]
+        mock_extract.return_value = (
+            ["id_0"],
+            np.array([[1.0, 0.0]]),
+            ["a", "_negative"],
+        )
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=1)
+        dataset.has_sample_field = MagicMock(return_value=False)
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        result = splitter.split(dataset)
+
+        assert result.split_counts["train"] == 1
+        assert result.split_counts["val"] == 0
