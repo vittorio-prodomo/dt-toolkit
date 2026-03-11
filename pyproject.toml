@@ -89,6 +89,7 @@ dt-reduce = "detection_toolkit.scripts.reduce:main"
 dt-cluster = "detection_toolkit.scripts.cluster:main"
 dt-embed = "detection_toolkit.scripts.embed:main"
 dt-thumbnails = "detection_toolkit.scripts.thumbnails:main"
+dt-split = "detection_toolkit.scripts.split:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"

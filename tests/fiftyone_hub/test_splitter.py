@@ -427,3 +427,71 @@ class TestDatasetSplitter:
         splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
         with pytest.raises(ValueError, match="Could not resolve"):
             splitter.split(dataset)
+
+
+class TestCLIArgs:
+    """Tests for dt-split argument parsing."""
+
+    def test_default_args(self):
+        from detection_toolkit.scripts.split import parse_args
+
+        args = parse_args(["my_dataset"])
+        assert args.name == "my_dataset"
+        assert args.ratio == [0.8]
+        assert args.label_field is None
+        assert args.group_by is None
+        assert args.seed == 42
+        assert args.split_field == "split"
+        assert args.yes is False
+
+    def test_two_way_ratio(self):
+        from detection_toolkit.scripts.split import parse_args
+
+        args = parse_args(["ds", "--ratio", "0.75"])
+        assert args.ratio == [0.75]
+
+    def test_three_way_ratio(self):
+        from detection_toolkit.scripts.split import parse_args
+
+        args = parse_args(["ds", "--ratio", "0.7", "0.15"])
+        assert args.ratio == [0.7, 0.15]
+
+    def test_all_options(self):
+        from detection_toolkit.scripts.split import parse_args
+
+        args = parse_args([
+            "ds",
+            "--ratio", "0.7", "0.15",
+            "--label-field", "segmentations",
+            "--group-by", "bridge_id",
+            "--seed", "99",
+            "--split-field", "my_split",
+            "--yes",
+        ])
+        assert args.label_field == "segmentations"
+        assert args.group_by == "bridge_id"
+        assert args.seed == 99
+        assert args.split_field == "my_split"
+        assert args.yes is True
+
+    def test_ratio_to_ratios_dict_two_way(self):
+        from detection_toolkit.scripts.split import _ratio_to_dict
+
+        d = _ratio_to_dict([0.8])
+        assert d == {"train": pytest.approx(0.8), "val": pytest.approx(0.2)}
+
+    def test_ratio_to_ratios_dict_three_way(self):
+        from detection_toolkit.scripts.split import _ratio_to_dict
+
+        d = _ratio_to_dict([0.7, 0.15])
+        assert d == {
+            "train": pytest.approx(0.7),
+            "val": pytest.approx(0.15),
+            "test": pytest.approx(0.15),
+        }
+
+    def test_ratio_to_ratios_dict_invalid(self):
+        from detection_toolkit.scripts.split import _ratio_to_dict
+
+        with pytest.raises(ValueError):
+            _ratio_to_dict([0.5, 0.3, 0.3])  # too many values
