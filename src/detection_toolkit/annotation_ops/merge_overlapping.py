@@ -131,3 +131,35 @@ def _merge_polygons(polylines):
         result.append(pl)
 
     return result
+
+
+def _merge_bboxes(detections):
+    """Merge bbox-only Detections into one by taking the union rectangle.
+
+    Args:
+        detections: List of fo.Detection instances (same class, no masks).
+
+    Returns:
+        A single fo.Detection with the union bounding box.
+    """
+    if len(detections) == 1:
+        return detections[0]
+
+    x_min = min(d.bounding_box[0] for d in detections)
+    y_min = min(d.bounding_box[1] for d in detections)
+    x_max = max(d.bounding_box[0] + d.bounding_box[2] for d in detections)
+    y_max = max(d.bounding_box[1] + d.bounding_box[3] for d in detections)
+
+    first = detections[0]
+    extra_attrs = {}
+    for attr in first.field_names:
+        if attr not in ("id", "attributes", "tags", "label", "bounding_box", "mask", "mask_path", "index"):
+            extra_attrs[attr] = first[attr]
+
+    import fiftyone as fo
+
+    return fo.Detection(
+        label=first.label,
+        bounding_box=[x_min, y_min, x_max - x_min, y_max - y_min],
+        **extra_attrs,
+    )

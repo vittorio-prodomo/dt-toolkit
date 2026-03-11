@@ -141,3 +141,52 @@ class TestMergePolygons:
         result = _merge_polygons([p])
         assert len(result) == 1
         assert result[0].points == p.points
+
+
+class TestMergeBboxes:
+    """Tests for bounding box union merging."""
+
+    def _make_detection(self, bbox, label="crack"):
+        """Create an fo.Detection with given bbox [x, y, w, h]."""
+        return fo.Detection(label=label, bounding_box=bbox)
+
+    def test_two_overlapping(self):
+        """Two overlapping boxes yield their union rectangle."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_bboxes,
+        )
+
+        d1 = self._make_detection([0.0, 0.0, 0.5, 0.5])
+        d2 = self._make_detection([0.25, 0.25, 0.5, 0.5])
+
+        result = _merge_bboxes([d1, d2])
+        bb = result.bounding_box
+        assert bb[0] == pytest.approx(0.0)   # x
+        assert bb[1] == pytest.approx(0.0)   # y
+        assert bb[2] == pytest.approx(0.75)  # w
+        assert bb[3] == pytest.approx(0.75)  # h
+        assert result.label == "crack"
+
+    def test_preserves_first_attributes(self):
+        """Custom attributes from the first detection are preserved."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_bboxes,
+        )
+
+        d1 = self._make_detection([0.0, 0.0, 0.5, 0.5])
+        d1["confidence"] = 0.95
+        d2 = self._make_detection([0.25, 0.25, 0.5, 0.5])
+        d2["confidence"] = 0.1
+
+        result = _merge_bboxes([d1, d2])
+        assert result["confidence"] == 0.95
+
+    def test_single_detection_passthrough(self):
+        """A single detection is returned as-is."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_bboxes,
+        )
+
+        d = self._make_detection([0.1, 0.2, 0.3, 0.4])
+        result = _merge_bboxes([d])
+        assert result.bounding_box == [0.1, 0.2, 0.3, 0.4]
