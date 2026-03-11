@@ -90,6 +90,7 @@ dt-cluster = "detection_toolkit.scripts.cluster:main"
 dt-embed = "detection_toolkit.scripts.embed:main"
 dt-thumbnails = "detection_toolkit.scripts.thumbnails:main"
 dt-split = "detection_toolkit.scripts.split:main"
+dt-visualize = "detection_toolkit.scripts.visualize:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
@@ -97,3 +98,8 @@ Issues = "https://github.com/vittorio-prodomo/detection-toolkit/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/detection_toolkit"]
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_mongod: mark test as requiring a running MongoDB instance (skip if unavailable)",
+]

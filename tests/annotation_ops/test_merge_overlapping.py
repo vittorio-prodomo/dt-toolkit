@@ -256,3 +256,206 @@ class TestMergeMasks:
 
         result = _merge_masks([d1, d2], width=100, height=100)
         assert result["confidence"] == 0.8
+
+
+@pytest.mark.requires_mongod
+class TestMergeOverlappingIntegration:
+    """Integration tests using real FiftyOne datasets."""
+
+    @pytest.fixture
+    def polyline_dataset(self):
+        """Dataset with overlapping Polyline annotations."""
+        dataset = fo.Dataset()
+        dataset.add_sample(
+            fo.Sample(
+                filepath="/tmp/test.jpg",
+                segmentations=fo.Polylines(
+                    polylines=[
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.0, 0.5)]],
+                            closed=True,
+                            filled=True,
+                        ),
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)]],
+                            closed=True,
+                            filled=True,
+                        ),
+                        fo.Polyline(
+                            label="spall",
+                            points=[[(0.3, 0.3), (0.6, 0.3), (0.6, 0.6), (0.3, 0.6)]],
+                            closed=True,
+                            filled=True,
+                        ),
+                    ]
+                ),
+            )
+        )
+        yield dataset
+        fo.delete_dataset(dataset.name)
+
+    @pytest.fixture
+    def bbox_dataset(self):
+        """Dataset with overlapping bbox-only Detections."""
+        dataset = fo.Dataset()
+        dataset.add_sample(
+            fo.Sample(
+                filepath="/tmp/test.jpg",
+                ground_truth=fo.Detections(
+                    detections=[
+                        fo.Detection(label="crack", bounding_box=[0.0, 0.0, 0.5, 0.5]),
+                        fo.Detection(label="crack", bounding_box=[0.25, 0.25, 0.5, 0.5]),
+                        fo.Detection(label="spall", bounding_box=[0.0, 0.0, 0.3, 0.3]),
+                    ]
+                ),
+            )
+        )
+        yield dataset
+        fo.delete_dataset(dataset.name)
+
+    def test_polylines_merged(self, polyline_dataset):
+        """Two overlapping same-class polylines merge; different class untouched."""
+        from detection_toolkit.annotation_ops import merge_overlapping
+
+        merge_overlapping(polyline_dataset, label_field="segmentations")
+        sample = polyline_dataset.first()
+        polylines = sample.segmentations.polylines
+        labels = [p.label for p in polylines]
+        assert labels.count("crack") == 1  # merged
+        assert labels.count("spall") == 1  # untouched
+
+    def test_bboxes_merged(self, bbox_dataset):
+        """Two overlapping same-class bboxes merge; different class untouched."""
+        from detection_toolkit.annotation_ops import merge_overlapping
+
+        merge_overlapping(bbox_dataset, label_field="ground_truth")
+        sample = bbox_dataset.first()
+        dets = sample.ground_truth.detections
+        labels = [d.label for d in dets]
+        assert labels.count("crack") == 1  # merged
+        assert labels.count("spall") == 1  # untouched
+
+    def test_chain_reaction_polylines(self):
+        """A↔B↔C chain where A∩C=∅ still merges all three."""
+        dataset = fo.Dataset()
+        dataset.add_sample(
+            fo.Sample(
+                filepath="/tmp/test.jpg",
+                segmentations=fo.Polylines(
+                    polylines=[
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.0, 0.0), (0.3, 0.0), (0.3, 0.3), (0.0, 0.3)]],
+                            closed=True, filled=True,
+                        ),
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.2, 0.2), (0.5, 0.2), (0.5, 0.5), (0.2, 0.5)]],
+                            closed=True, filled=True,
+                        ),
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.4, 0.4), (0.7, 0.4), (0.7, 0.7), (0.4, 0.7)]],
+                            closed=True, filled=True,
+                        ),
+                    ]
+                ),
+            )
+        )
+        try:
+            from detection_toolkit.annotation_ops import merge_overlapping
+
+            merge_overlapping(dataset, label_field="segmentations")
+            sample = dataset.first()
+            assert len(sample.segmentations.polylines) == 1
+        finally:
+            fo.delete_dataset(dataset.name)
+
+    def test_masked_detections_merged(self):
+        """Two overlapping masked detections merge correctly end-to-end."""
+        dataset = fo.Dataset()
+        import cv2
+
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        filepath = "/tmp/test_masked.jpg"
+        cv2.imwrite(filepath, img)
+
+        mask1 = np.ones((50, 50), dtype=bool)
+        mask2 = np.ones((50, 50), dtype=bool)
+        dataset.add_sample(
+            fo.Sample(
+                filepath=filepath,
+                ground_truth=fo.Detections(
+                    detections=[
+                        fo.Detection(
+                            label="crack",
+                            bounding_box=[0.0, 0.0, 0.5, 0.5],
+                            mask=mask1,
+                        ),
+                        fo.Detection(
+                            label="crack",
+                            bounding_box=[0.25, 0.25, 0.5, 0.5],
+                            mask=mask2,
+                        ),
+                    ]
+                ),
+            )
+        )
+        try:
+            from detection_toolkit.annotation_ops import merge_overlapping
+
+            merge_overlapping(dataset, label_field="ground_truth")
+            sample = dataset.first()
+            dets = sample.ground_truth.detections
+            assert len(dets) == 1
+            assert dets[0].label == "crack"
+            assert dets[0].mask is not None
+            assert dets[0].bounding_box[2] == pytest.approx(0.75)
+        finally:
+            fo.delete_dataset(dataset.name)
+
+    def test_no_annotations_skip(self):
+        """Sample with no annotations is skipped without error."""
+        dataset = fo.Dataset()
+        dataset.add_sample(
+            fo.Sample(
+                filepath="/tmp/test.jpg",
+                segmentations=fo.Polylines(polylines=[]),
+            )
+        )
+        try:
+            from detection_toolkit.annotation_ops import merge_overlapping
+
+            merge_overlapping(dataset, label_field="segmentations")
+            sample = dataset.first()
+            assert len(sample.segmentations.polylines) == 0
+        finally:
+            fo.delete_dataset(dataset.name)
+
+    def test_single_annotation_unchanged(self):
+        """A single annotation passes through without modification."""
+        dataset = fo.Dataset()
+        dataset.add_sample(
+            fo.Sample(
+                filepath="/tmp/test.jpg",
+                segmentations=fo.Polylines(
+                    polylines=[
+                        fo.Polyline(
+                            label="crack",
+                            points=[[(0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.0, 0.5)]],
+                            closed=True, filled=True,
+                        ),
+                    ]
+                ),
+            )
+        )
+        try:
+            from detection_toolkit.annotation_ops import merge_overlapping
+
+            merge_overlapping(dataset, label_field="segmentations")
+            sample = dataset.first()
+            assert len(sample.segmentations.polylines) == 1
+        finally:
+            fo.delete_dataset(dataset.name)

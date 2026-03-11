@@ -1,9 +1,107 @@
 """Merge overlapping same-class annotations within a FiftyOne dataset."""
 
 import logging
+from collections import defaultdict
 from typing import List, Set
 
 logger = logging.getLogger(__name__)
+
+
+def _group_by_class(annotations):
+    """Group annotations by their label.
+
+    Args:
+        annotations: List of fo.Detection or fo.Polyline instances.
+
+    Returns:
+        dict mapping label (str) to list of annotations.
+    """
+    groups = defaultdict(list)
+    for ann in annotations:
+        groups[ann.label].append(ann)
+    return dict(groups)
+
+
+def _merge_sample_polylines(sample, label_field):
+    """Merge overlapping same-class Polylines on a single sample."""
+    polylines = sample[label_field].polylines
+    if len(polylines) <= 1:
+        return
+
+    groups = _group_by_class(polylines)
+    merged_all = []
+
+    for label, group in groups.items():
+        if len(group) == 1:
+            merged_all.extend(group)
+            continue
+
+        # Skip open polylines
+        filled = [p for p in group if p.filled]
+        unfilled = [p for p in group if not p.filled]
+        if unfilled:
+            logger.warning(
+                "Skipping %d open polylines (filled=False) for class '%s'",
+                len(unfilled), label,
+            )
+            merged_all.extend(unfilled)
+
+        if len(filled) <= 1:
+            merged_all.extend(filled)
+            continue
+
+        geoms = [_polyline_to_shapely(p) for p in filled]
+        components = _find_connected_components(geoms)
+
+        for comp in components:
+            comp_polylines = [filled[i] for i in comp]
+            merged_all.extend(_merge_polygons(comp_polylines))
+
+    import fiftyone as fo
+
+    sample[label_field] = fo.Polylines(polylines=merged_all)
+    sample.save()
+
+
+def _merge_sample_detections(sample, label_field):
+    """Merge overlapping same-class Detections on a single sample."""
+    from shapely.geometry import box as shapely_box
+
+    detections = sample[label_field].detections
+    if len(detections) <= 1:
+        return
+
+    groups = _group_by_class(detections)
+    merged_all = []
+
+    for label, group in groups.items():
+        if len(group) == 1:
+            merged_all.extend(group)
+            continue
+
+        # Convert bboxes to Shapely boxes for overlap testing
+        geoms = []
+        for d in group:
+            bx, by, bw, bh = d.bounding_box
+            geoms.append(shapely_box(bx, by, bx + bw, by + bh))
+
+        components = _find_connected_components(geoms)
+
+        for comp in components:
+            comp_dets = [group[i] for i in comp]
+            if len(comp_dets) == 1:
+                merged_all.append(comp_dets[0])
+            elif any(d.mask is not None for d in comp_dets):
+                w = sample.metadata.width
+                h = sample.metadata.height
+                merged_all.append(_merge_masks(comp_dets, w, h))
+            else:
+                merged_all.append(_merge_bboxes(comp_dets))
+
+    import fiftyone as fo
+
+    sample[label_field] = fo.Detections(detections=merged_all)
+    sample.save()
 
 
 def _find_connected_components(geometries) -> List[Set[int]]:
@@ -50,6 +148,10 @@ def _find_connected_components(geometries) -> List[Set[int]]:
 def merge_overlapping(dataset, label_field=None):
     """Merge overlapping same-class annotations in-place.
 
+    Supports Polylines (polygon segmentations), Detections with instance
+    masks, and bbox-only Detections. Uses Union-Find for transitive
+    (chain-reaction) merging.
+
     Args:
         dataset: FiftyOne Dataset or DatasetView.
         label_field: Label field name. Auto-resolved if None.
@@ -57,7 +159,32 @@ def merge_overlapping(dataset, label_field=None):
     Returns:
         The dataset (mutated in-place).
     """
-    raise NotImplementedError
+    from detection_toolkit.fiftyone_hub.utils import (
+        detect_container_type,
+        resolve_label_field,
+    )
+
+    label_field = resolve_label_field(dataset, label_field)
+    container = detect_container_type(dataset, label_field)
+
+    # Ensure metadata is available for mask operations
+    if container == "detections":
+        dataset.compute_metadata(overwrite=False)
+
+    logger.info(
+        "Merging overlapping annotations: field='%s', type='%s', samples=%d",
+        label_field, container, len(dataset),
+    )
+
+    if container == "polylines":
+        merge_fn = _merge_sample_polylines
+    else:
+        merge_fn = _merge_sample_detections
+
+    for sample in dataset.iter_samples(autosave=False, progress=True):
+        merge_fn(sample, label_field)
+
+    return dataset
 
 
 from shapely.geometry import Polygon, MultiPolygon
