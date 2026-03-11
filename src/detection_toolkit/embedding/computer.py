@@ -1,10 +1,23 @@
 """EmbeddingComputer: compute embeddings on FiftyOne datasets via pluggable backends."""
 
 import logging
+import re
 
 from .backends import _BACKENDS
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_field_name(name: str) -> str:
+    """Replace characters invalid in FiftyOne field names with underscores."""
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    if sanitized != name:
+        logger.warning(
+            "Field name '%s' contains invalid characters, using '%s'",
+            name,
+            sanitized,
+        )
+    return sanitized
 
 
 class EmbeddingComputer:
@@ -19,6 +32,8 @@ class EmbeddingComputer:
         api_url=None,
         instruction=None,
     ):
+        output_field = _sanitize_field_name(output_field)
+
         if backend not in _BACKENDS:
             raise ValueError(
                 f"Unknown embedding backend '{backend}'. "
