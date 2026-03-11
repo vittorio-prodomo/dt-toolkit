@@ -53,6 +53,8 @@ def parse_args(argv=None):
     p.add_argument("--weights-field", "-w", default=None,
                    metavar="FIELD",
                    help="Score field for loss weighting (writes weights.json per split).")
+    p.add_argument("--merge-overlapping", action="store_true",
+                   help="Merge overlapping same-class annotations before export.")
     p.add_argument("--quiet", "-q", action="store_true")
     return p.parse_args(argv)
 
@@ -71,20 +73,48 @@ def main(argv=None):
     dataset = fo.load_dataset(args.name)
     fmt = DatasetFormat(args.to)
 
+    logger = logging.getLogger(__name__)
+
     exporter = FiftyOneDatasetExporter()
-    exporter.export(
-        dataset=dataset,
-        output_dir=args.output,
-        format=fmt,
-        export_media=args.export_media,
-        splits=args.splits,
-        label_field=args.label_field,
-        min_area_ratio=args.min_area_ratio,
-        max_area_ratio=args.max_area_ratio,
-        negative_ratio=args.negative_ratio,
-        exclude_tags=args.exclude_tags,
-        weights_field=args.weights_field,
-    )
+
+    if args.merge_overlapping:
+        from detection_toolkit.annotation_ops import merge_overlapping
+
+        tmp_name = f"_tmp_merge_{dataset.name}"
+        export_target = dataset.clone(tmp_name)
+        logger.info("Cloned dataset for merge: %s", tmp_name)
+        try:
+            merge_overlapping(export_target, label_field=args.label_field)
+            exporter.export(
+                dataset=export_target,
+                output_dir=args.output,
+                format=fmt,
+                export_media=args.export_media,
+                splits=args.splits,
+                label_field=args.label_field,
+                min_area_ratio=args.min_area_ratio,
+                max_area_ratio=args.max_area_ratio,
+                negative_ratio=args.negative_ratio,
+                exclude_tags=args.exclude_tags,
+                weights_field=args.weights_field,
+            )
+        finally:
+            fo.delete_dataset(tmp_name)
+            logger.info("Deleted temporary dataset: %s", tmp_name)
+    else:
+        exporter.export(
+            dataset=dataset,
+            output_dir=args.output,
+            format=fmt,
+            export_media=args.export_media,
+            splits=args.splits,
+            label_field=args.label_field,
+            min_area_ratio=args.min_area_ratio,
+            max_area_ratio=args.max_area_ratio,
+            negative_ratio=args.negative_ratio,
+            exclude_tags=args.exclude_tags,
+            weights_field=args.weights_field,
+        )
 
     print(f"FiftyOne export complete:")
     print(f"  Dataset:  {dataset.name}")
