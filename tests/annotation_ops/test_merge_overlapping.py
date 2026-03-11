@@ -1,5 +1,6 @@
 """Tests for annotation_ops.merge_overlapping."""
 
+import numpy as np
 import pytest
 from shapely.geometry import box
 
@@ -190,3 +191,68 @@ class TestMergeBboxes:
         d = self._make_detection([0.1, 0.2, 0.3, 0.4])
         result = _merge_bboxes([d])
         assert result.bounding_box == [0.1, 0.2, 0.3, 0.4]
+
+
+class TestMergeMasks:
+    """Tests for instance mask merging."""
+
+    def _make_masked_detection(self, bbox, mask, label="crack"):
+        """Create fo.Detection with a boolean mask relative to bbox."""
+        return fo.Detection(label=label, bounding_box=bbox, mask=mask)
+
+    def test_two_overlapping_masks(self):
+        """Two overlapping masked detections merge into one."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_masks,
+        )
+
+        # Image is 100x100
+        # d1: bbox [0, 0, 0.5, 0.5] → pixels [0:50, 0:50], full mask
+        mask1 = np.ones((50, 50), dtype=bool)
+        d1 = self._make_masked_detection([0.0, 0.0, 0.5, 0.5], mask1)
+
+        # d2: bbox [0.25, 0.25, 0.5, 0.5] → pixels [25:75, 25:75], full mask
+        mask2 = np.ones((50, 50), dtype=bool)
+        d2 = self._make_masked_detection([0.25, 0.25, 0.5, 0.5], mask2)
+
+        result = _merge_masks([d1, d2], width=100, height=100)
+        bb = result.bounding_box
+        # Union bbox should cover [0, 0] to [0.75, 0.75]
+        assert bb[0] == pytest.approx(0.0)
+        assert bb[1] == pytest.approx(0.0)
+        assert bb[2] == pytest.approx(0.75)
+        assert bb[3] == pytest.approx(0.75)
+        # Mask should exist and be the right shape
+        assert result.mask is not None
+        assert result.mask.shape == (75, 75)
+        assert result.mask.any()
+
+    def test_single_detection_passthrough(self):
+        """A single masked detection is returned as-is."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_masks,
+        )
+
+        mask = np.ones((30, 40), dtype=bool)
+        d = self._make_masked_detection([0.1, 0.2, 0.4, 0.3], mask)
+
+        result = _merge_masks([d], width=100, height=100)
+        assert result.bounding_box == [0.1, 0.2, 0.4, 0.3]
+        np.testing.assert_array_equal(result.mask, mask)
+
+    def test_preserves_first_attributes(self):
+        """Custom attributes from the first detection are preserved."""
+        from detection_toolkit.annotation_ops.merge_overlapping import (
+            _merge_masks,
+        )
+
+        mask1 = np.ones((50, 50), dtype=bool)
+        d1 = self._make_masked_detection([0.0, 0.0, 0.5, 0.5], mask1)
+        d1["confidence"] = 0.8
+
+        mask2 = np.ones((50, 50), dtype=bool)
+        d2 = self._make_masked_detection([0.25, 0.25, 0.5, 0.5], mask2)
+        d2["confidence"] = 0.2
+
+        result = _merge_masks([d1, d2], width=100, height=100)
+        assert result["confidence"] == 0.8

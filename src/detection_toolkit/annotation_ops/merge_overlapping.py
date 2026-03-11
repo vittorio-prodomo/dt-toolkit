@@ -163,3 +163,76 @@ def _merge_bboxes(detections):
         bounding_box=[x_min, y_min, x_max - x_min, y_max - y_min],
         **extra_attrs,
     )
+
+
+import numpy as np
+
+
+def _merge_masks(detections, width, height):
+    """Merge masked Detections by rasterizing to image-space and bitwise-OR.
+
+    Args:
+        detections: List of fo.Detection instances with masks (same class).
+        width: Image width in pixels.
+        height: Image height in pixels.
+
+    Returns:
+        A single fo.Detection with merged mask and tight bounding box.
+    """
+    if len(detections) == 1:
+        return detections[0]
+
+    # Rasterize all masks into a single image-space canvas
+    canvas = np.zeros((height, width), dtype=bool)
+    for det in detections:
+        bx, by, bw, bh = det.bounding_box
+        x0 = int(round(bx * width))
+        y0 = int(round(by * height))
+        x1 = int(round((bx + bw) * width))
+        y1 = int(round((by + bh) * height))
+        # Resize mask to bbox pixel dimensions if needed
+        mask = det.mask
+        roi_h, roi_w = y1 - y0, x1 - x0
+        if mask.shape != (roi_h, roi_w):
+            import cv2
+
+            mask = cv2.resize(
+                mask.astype(np.uint8), (roi_w, roi_h),
+                interpolation=cv2.INTER_NEAREST,
+            ).astype(bool)
+        canvas[y0:y1, x0:x1] |= mask
+
+    # Find tight bounding box of merged mask
+    rows = np.any(canvas, axis=1)
+    cols = np.any(canvas, axis=0)
+    if not rows.any():
+        return detections[0]
+
+    y_min, y_max = np.where(rows)[0][[0, -1]]
+    x_min, x_max = np.where(cols)[0][[0, -1]]
+    y_max += 1
+    x_max += 1
+
+    # Crop mask and compute relative bbox
+    cropped = canvas[y_min:y_max, x_min:x_max]
+    rel_bbox = [
+        x_min / width,
+        y_min / height,
+        (x_max - x_min) / width,
+        (y_max - y_min) / height,
+    ]
+
+    first = detections[0]
+    extra_attrs = {}
+    for attr in first.field_names:
+        if attr not in ("id", "attributes", "tags", "label", "bounding_box", "mask", "mask_path", "index"):
+            extra_attrs[attr] = first[attr]
+
+    import fiftyone as fo
+
+    return fo.Detection(
+        label=first.label,
+        bounding_box=rel_bbox,
+        mask=cropped,
+        **extra_attrs,
+    )
