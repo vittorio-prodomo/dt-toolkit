@@ -97,3 +97,38 @@ def _greedy_assign(
         rng.shuffle(assignment[name])
 
     return assignment
+
+
+def _aggregate_groups(
+    ids: List[str],
+    vectors: np.ndarray,
+    group_values: List[str],
+) -> Tuple[List[str], np.ndarray, List[List[str]]]:
+    """Aggregate per-image vectors into per-group vectors.
+
+    Args:
+        ids: Sample IDs, one per image.
+        vectors: ``(N, C)`` count matrix.
+        group_values: Group key per image (same length as *ids*).
+
+    Returns:
+        ``(group_keys, group_vectors, group_members)`` where
+        *group_keys* is a list of unique group names,
+        *group_vectors* is ``(G, C)``, and *group_members* maps each
+        group index to a list of sample IDs.
+    """
+    groups: Dict[str, List[int]] = defaultdict(list)
+    for i, gv in enumerate(group_values):
+        groups[gv].append(i)
+
+    group_keys = sorted(groups.keys())
+    n_classes = vectors.shape[1]
+    group_vectors = np.zeros((len(group_keys), n_classes))
+    group_members: List[List[str]] = []
+
+    for gi, gk in enumerate(group_keys):
+        member_indices = groups[gk]
+        group_vectors[gi] = vectors[member_indices].sum(axis=0)
+        group_members.append([ids[i] for i in member_indices])
+
+    return group_keys, group_vectors, group_members

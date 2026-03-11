@@ -104,3 +104,48 @@ class TestGreedyAssign:
 
         total = len(assignment["train"]) + len(assignment["val"])
         assert total == 50
+
+
+class TestAggregateGroups:
+    """Tests for group-aware vector aggregation."""
+
+    def test_groups_summed(self):
+        """Group vectors are element-wise sums of member vectors."""
+        from detection_toolkit.fiftyone_hub.splitter import _aggregate_groups
+
+        ids = ["a", "b", "c", "d"]
+        vectors = np.array([
+            [1, 0],
+            [0, 2],
+            [3, 1],
+            [1, 1],
+        ], dtype=float)
+        group_values = ["g1", "g1", "g2", "g2"]
+
+        group_keys, group_vecs, group_members = _aggregate_groups(
+            ids, vectors, group_values,
+        )
+
+        assert len(group_keys) == 2
+        g1_idx = group_keys.index("g1")
+        g2_idx = group_keys.index("g2")
+        np.testing.assert_array_equal(group_vecs[g1_idx], [1, 2])
+        np.testing.assert_array_equal(group_vecs[g2_idx], [4, 2])
+        assert set(group_members[g1_idx]) == {"a", "b"}
+        assert set(group_members[g2_idx]) == {"c", "d"}
+
+    def test_single_member_groups(self):
+        """Groups of size 1 pass through unchanged."""
+        from detection_toolkit.fiftyone_hub.splitter import _aggregate_groups
+
+        ids = ["a", "b"]
+        vectors = np.array([[1, 2], [3, 4]], dtype=float)
+        group_values = ["g1", "g2"]
+
+        group_keys, group_vecs, group_members = _aggregate_groups(
+            ids, vectors, group_values,
+        )
+
+        assert len(group_keys) == 2
+        assert group_members[group_keys.index("g1")] == ["a"]
+        assert group_members[group_keys.index("g2")] == ["b"]
