@@ -67,7 +67,7 @@ class FiftyOneDatasetExporter:
         dataset: fo.Dataset,
         output_dir: Union[str, Path],
         format: DatasetFormat,
-        export_media: str = "symlink",
+        export_media: Union[str, bool] = "symlink",
         splits: Optional[List[str]] = None,
         label_field: Optional[str] = None,
         min_area_ratio: float = 0.0,
@@ -283,7 +283,7 @@ class FiftyOneDatasetExporter:
         self,
         view,
         output_dir: Path,
-        export_media: str,
+        export_media: Union[str, bool],
         weights_field=None,
     ) -> None:
         export_splits = self._resolve_export_splits(view)
@@ -296,6 +296,12 @@ class FiftyOneDatasetExporter:
                 logger.warning("No samples for YOLO split '%s'", split)
                 continue
 
+            split_export_media = export_media
+            if self._should_skip_media(
+                split_view, output_dir / "images" / split,
+            ):
+                split_export_media = False
+
             logger.info(
                 "Exporting YOLO split: %s (%d samples)",
                 split,
@@ -306,7 +312,7 @@ class FiftyOneDatasetExporter:
                 data_path=str(output_dir / "images" / split),
                 labels_path=str(output_dir / "labels" / split),
                 yaml_path=str(yaml_path),
-                export_media=export_media,
+                export_media=split_export_media,
                 classes=classes,
             )
             split_view.export(dataset_exporter=exporter)
@@ -324,7 +330,7 @@ class FiftyOneDatasetExporter:
         self,
         view,
         output_dir: Path,
-        export_media: str,
+        export_media: Union[str, bool],
         weights_field=None,
     ) -> None:
         export_splits = self._resolve_export_splits(view)
@@ -336,6 +342,12 @@ class FiftyOneDatasetExporter:
                 logger.warning("No samples for COCO split '%s'", split)
                 continue
 
+            split_export_media = export_media
+            if self._should_skip_media(
+                split_view, output_dir / "images" / split,
+            ):
+                split_export_media = False
+
             logger.info(
                 "Exporting COCO split: %s (%d samples)",
                 split,
@@ -346,7 +358,7 @@ class FiftyOneDatasetExporter:
                 labels_path=str(
                     output_dir / "annotations" / f"instances_{split}.json"
                 ),
-                export_media=export_media,
+                export_media=split_export_media,
                 classes=classes,
                 extra_attrs=True,
             )

@@ -1,7 +1,7 @@
 """Tests for FiftyOneDatasetExporter media overlap detection."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call, patch
 
 from detection_toolkit.fiftyone_hub.exporter import FiftyOneDatasetExporter
 
@@ -110,3 +110,84 @@ class TestShouldSkipMedia:
 
         exporter = FiftyOneDatasetExporter()
         assert exporter._should_skip_media(view, tmp_path / "nonexistent") is False
+
+
+class TestExportMediaOverride:
+    """Tests that _export_yolo and _export_coco respect media skip."""
+
+    @patch.object(FiftyOneDatasetExporter, "_should_skip_media")
+    def test_yolo_skips_media_on_overlap(self, mock_skip):
+        """_export_yolo passes export_media=False when overlap detected."""
+        mock_skip.return_value = True
+
+        exporter = FiftyOneDatasetExporter()
+
+        # Mock the view so the export loop runs once
+        view = MagicMock()
+        view.__len__ = MagicMock(return_value=2)
+        view.has_sample_field = MagicMock(return_value=False)
+        view.classes = {"ground_truth": ["a", "b"]}
+
+        with patch(
+            "detection_toolkit.fiftyone_hub.exporter.YOLOv5DatasetExporter"
+        ) as MockYOLO:
+            exporter._export_yolo(view, Path("/out"), "symlink")
+
+            assert MockYOLO.call_args.kwargs.get("export_media") is False
+
+    @patch.object(FiftyOneDatasetExporter, "_should_skip_media")
+    def test_yolo_keeps_media_when_no_overlap(self, mock_skip):
+        """_export_yolo keeps original export_media when no overlap."""
+        mock_skip.return_value = False
+
+        exporter = FiftyOneDatasetExporter()
+
+        view = MagicMock()
+        view.__len__ = MagicMock(return_value=2)
+        view.has_sample_field = MagicMock(return_value=False)
+        view.classes = {"ground_truth": ["a", "b"]}
+
+        with patch(
+            "detection_toolkit.fiftyone_hub.exporter.YOLOv5DatasetExporter"
+        ) as MockYOLO:
+            exporter._export_yolo(view, Path("/out"), "symlink")
+
+            assert MockYOLO.call_args.kwargs.get("export_media") == "symlink"
+
+    @patch.object(FiftyOneDatasetExporter, "_should_skip_media")
+    def test_coco_skips_media_on_overlap(self, mock_skip):
+        """_export_coco passes export_media=False when overlap detected."""
+        mock_skip.return_value = True
+
+        exporter = FiftyOneDatasetExporter()
+
+        view = MagicMock()
+        view.__len__ = MagicMock(return_value=2)
+        view.has_sample_field = MagicMock(return_value=False)
+        view.classes = {"ground_truth": ["a", "b"]}
+
+        with patch(
+            "detection_toolkit.fiftyone_hub.exporter.COCODetectionDatasetExporter"
+        ) as MockCOCO:
+            exporter._export_coco(view, Path("/out"), "symlink")
+
+            assert MockCOCO.call_args.kwargs.get("export_media") is False
+
+    @patch.object(FiftyOneDatasetExporter, "_should_skip_media")
+    def test_coco_keeps_media_when_no_overlap(self, mock_skip):
+        """_export_coco keeps original export_media when no overlap."""
+        mock_skip.return_value = False
+
+        exporter = FiftyOneDatasetExporter()
+
+        view = MagicMock()
+        view.__len__ = MagicMock(return_value=2)
+        view.has_sample_field = MagicMock(return_value=False)
+        view.classes = {"ground_truth": ["a", "b"]}
+
+        with patch(
+            "detection_toolkit.fiftyone_hub.exporter.COCODetectionDatasetExporter"
+        ) as MockCOCO:
+            exporter._export_coco(view, Path("/out"), "symlink")
+
+            assert MockCOCO.call_args.kwargs.get("export_media") == "symlink"
