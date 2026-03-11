@@ -18,7 +18,12 @@ from fiftyone.utils.coco import COCODetectionDatasetExporter
 from fiftyone.utils.yolo import YOLOv5DatasetExporter
 
 from ..core.models import DatasetFormat
-from .utils import NegativeSampler, filter_by_area_ratio, resolve_label_field
+from .utils import (
+    NegativeSampler,
+    _detect_container_type,
+    filter_by_area_ratio,
+    resolve_label_field,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -383,12 +388,34 @@ class FiftyOneDatasetExporter:
 
     @staticmethod
     def _resolve_classes(view) -> List[str]:
-        """Extract the class list from the dataset/view."""
-        # DatasetView and Dataset both expose the .classes property
+        """Extract the class list from the dataset/view.
+
+        Resolution order:
+
+        1. ``dataset.classes[field]`` (first entry).
+        2. ``dataset.default_classes``.
+        3. Distinct label values discovered from the data.
+        """
         classes = view.classes
         if classes:
             return list(classes.values())[0]
-        return []
+
+        if view.default_classes:
+            return list(view.default_classes)
+
+        # Fall back to discovering classes from the data
+        label_field = resolve_label_field(view)
+        container = _detect_container_type(view, label_field)
+        discovered = sorted(
+            view.distinct(f"{label_field}.{container}.label")
+        )
+        if discovered:
+            logger.info(
+                "Discovered %d classes from data: %s",
+                len(discovered),
+                discovered,
+            )
+        return discovered
 
     @staticmethod
     def _should_skip_media(split_view, target_image_dir) -> bool:
