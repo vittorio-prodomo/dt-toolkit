@@ -132,3 +132,111 @@ def _aggregate_groups(
         group_members.append([ids[i] for i in member_indices])
 
     return group_keys, group_vectors, group_members
+
+
+def _detect_label_type(
+    dataset,
+    label_field: str,
+) -> Tuple[str, str]:
+    """Detect the label type and return ``(type_key, values_path)``.
+
+    Supports Classification, Detections, Polylines, and Segmentation fields.
+
+    Returns:
+        A tuple of ``(type_key, values_path)`` where *type_key* is one of
+        ``"classification"``, ``"detections"``, ``"polylines"``,
+        ``"segmentation"`` and *values_path* is the field path to pass to
+        ``dataset.values()``.
+    """
+    import fiftyone.core.labels as fol
+
+    schema = dataset.get_field_schema()
+    field = schema.get(label_field)
+    if field is None:
+        raise ValueError(
+            f"Label field '{label_field}' not found in dataset schema"
+        )
+
+    doc_type = getattr(field, "document_type", None)
+
+    if doc_type is getattr(fol, "Detections", None):
+        return "detections", f"{label_field}.detections"
+    if doc_type is getattr(fol, "Polylines", None):
+        return "polylines", f"{label_field}.polylines"
+    if doc_type is getattr(fol, "Classification", None):
+        return "classification", label_field
+    if doc_type is getattr(fol, "Segmentation", None):
+        return "segmentation", label_field
+
+    raise ValueError(
+        f"Unsupported label type for field '{label_field}'. "
+        f"Expected Classification, Detections, Polylines, or Segmentation."
+    )
+
+
+def _extract_feature_vectors(
+    dataset,
+    label_field: str,
+    class_list: List[str],
+) -> Tuple[List[str], np.ndarray, List[str]]:
+    """Extract per-image class count vectors from a FiftyOne dataset.
+
+    Args:
+        dataset: FiftyOne Dataset or DatasetView.
+        label_field: Resolved label field name.
+        class_list: Ordered class names.
+
+    Returns:
+        ``(sample_ids, vectors, class_names)`` where *vectors* is
+        ``(N, C+1)`` — one column per class plus a virtual negative class,
+        and *class_names* includes ``"_negative"`` as the last entry.
+    """
+    label_type, values_path = _detect_label_type(dataset, label_field)
+    class_to_idx = {name: i for i, name in enumerate(class_list)}
+    n_classes = len(class_list)
+
+    out_classes = list(class_list) + ["_negative"]
+    neg_idx = n_classes
+
+    ids, labels = dataset.values(["id", values_path])
+    n_samples = len(ids)
+    vectors = np.zeros((n_samples, n_classes + 1))
+
+    for i, sample_labels in enumerate(labels):
+        if sample_labels is None or (
+            isinstance(sample_labels, list) and len(sample_labels) == 0
+        ):
+            vectors[i, neg_idx] = 1.0
+            continue
+
+        if label_type == "classification":
+            cls_name = sample_labels.label
+            idx = class_to_idx.get(cls_name)
+            if idx is not None:
+                vectors[i, idx] = 1.0
+            else:
+                vectors[i, neg_idx] = 1.0
+
+        elif label_type in ("detections", "polylines"):
+            has_any = False
+            for det in sample_labels:
+                idx = class_to_idx.get(det.label)
+                if idx is not None:
+                    vectors[i, idx] += 1.0
+                    has_any = True
+            if not has_any:
+                vectors[i, neg_idx] = 1.0
+
+        elif label_type == "segmentation":
+            mask = sample_labels.mask
+            unique_vals = set(np.unique(mask)) - {0}
+            has_any = False
+            for val in unique_vals:
+                cls_idx = int(val) - 1
+                if 0 <= cls_idx < n_classes:
+                    vectors[i, cls_idx] = 1.0
+                    has_any = True
+            if not has_any:
+                vectors[i, neg_idx] = 1.0
+
+    return ids, vectors, out_classes

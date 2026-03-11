@@ -149,3 +149,129 @@ class TestAggregateGroups:
         assert len(group_keys) == 2
         assert group_members[group_keys.index("g1")] == ["a"]
         assert group_members[group_keys.index("g2")] == ["b"]
+
+
+from unittest.mock import MagicMock, patch
+
+
+class TestExtractFeatureVectors:
+    """Tests for feature vector extraction from FiftyOne labels."""
+
+    def _make_mock_dataset(self, labels_list, label_type):
+        """Helper: build a mock dataset returning bulk values()."""
+        n = len(labels_list)
+        sample_ids = [f"id_{i}" for i in range(n)]
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=n)
+
+        def mock_values(fields):
+            result = []
+            for f in fields:
+                if f == "id":
+                    result.append(sample_ids)
+                else:
+                    result.append(labels_list)
+            return result
+
+        dataset.values = mock_values
+        return dataset, sample_ids
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._detect_label_type")
+    def test_detections_count_vector(self, mock_detect):
+        """Detection labels produce instance count vectors."""
+        from detection_toolkit.fiftyone_hub.splitter import _extract_feature_vectors
+
+        mock_detect.return_value = ("detections", "ground_truth.detections")
+
+        class_list = ["crack", "spall"]
+        labels = [
+            [
+                MagicMock(label="crack"),
+                MagicMock(label="crack"),
+                MagicMock(label="spall"),
+            ],
+            [MagicMock(label="crack")],
+            None,
+        ]
+        dataset, sample_ids = self._make_mock_dataset(labels, "detections")
+
+        ids, vectors, classes = _extract_feature_vectors(
+            dataset, "ground_truth", class_list,
+        )
+
+        assert ids == sample_ids
+        assert classes == ["crack", "spall", "_negative"]
+        assert vectors.shape == (3, 3)
+        np.testing.assert_array_equal(vectors[0], [2, 1, 0])
+        np.testing.assert_array_equal(vectors[1], [1, 0, 0])
+        np.testing.assert_array_equal(vectors[2], [0, 0, 1])
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._detect_label_type")
+    def test_classifications_one_hot(self, mock_detect):
+        """Classification labels produce one-hot vectors."""
+        from detection_toolkit.fiftyone_hub.splitter import _extract_feature_vectors
+
+        mock_detect.return_value = ("classification", "predictions")
+
+        class_list = ["cat", "dog"]
+        labels = [
+            MagicMock(label="cat"),
+            MagicMock(label="dog"),
+            None,
+        ]
+        dataset, sample_ids = self._make_mock_dataset(labels, "classification")
+
+        ids, vectors, classes = _extract_feature_vectors(
+            dataset, "predictions", class_list,
+        )
+
+        assert vectors.shape == (3, 3)
+        np.testing.assert_array_equal(vectors[0], [1, 0, 0])
+        np.testing.assert_array_equal(vectors[1], [0, 1, 0])
+        np.testing.assert_array_equal(vectors[2], [0, 0, 1])
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._detect_label_type")
+    def test_segmentation_binary_presence(self, mock_detect):
+        """Segmentation labels produce binary presence vectors."""
+        from detection_toolkit.fiftyone_hub.splitter import _extract_feature_vectors
+
+        mock_detect.return_value = ("segmentation", "segmentations")
+
+        class_list = ["road", "building"]
+        mask_a = MagicMock()
+        mask_a.mask = np.array([[0, 1], [1, 2]])  # has class 1 and 2
+        mask_b = MagicMock()
+        mask_b.mask = np.array([[0, 0], [0, 1]])  # has class 1 only
+        labels = [mask_a, mask_b, None]
+        dataset, sample_ids = self._make_mock_dataset(labels, "segmentation")
+
+        ids, vectors, classes = _extract_feature_vectors(
+            dataset, "segmentations", class_list,
+        )
+
+        assert vectors.shape == (3, 3)
+        # mask_a: class indices 1 and 2 -> "road" (idx 0->pixel 1) and "building" (idx 1->pixel 2)
+        np.testing.assert_array_equal(vectors[0], [1, 1, 0])
+        # mask_b: class index 1 only -> "road"
+        np.testing.assert_array_equal(vectors[1], [1, 0, 0])
+        # None -> negative
+        np.testing.assert_array_equal(vectors[2], [0, 0, 1])
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._detect_label_type")
+    def test_all_unlabeled(self, mock_detect):
+        """All-unlabeled dataset: every image gets the negative class."""
+        from detection_toolkit.fiftyone_hub.splitter import _extract_feature_vectors
+
+        mock_detect.return_value = ("detections", "ground_truth.detections")
+
+        class_list = ["crack"]
+        labels = [None, None, None]
+        dataset, sample_ids = self._make_mock_dataset(labels, "detections")
+
+        ids, vectors, classes = _extract_feature_vectors(
+            dataset, "ground_truth", class_list,
+        )
+
+        assert vectors.shape == (3, 2)
+        np.testing.assert_array_equal(vectors[:, -1], [1, 1, 1])
