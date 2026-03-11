@@ -1,7 +1,7 @@
 """Tests for FiftyOneDatasetExporter media overlap detection."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from detection_toolkit.fiftyone_hub.exporter import FiftyOneDatasetExporter
 
