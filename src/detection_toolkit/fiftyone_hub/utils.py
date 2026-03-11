@@ -64,7 +64,7 @@ def resolve_label_field(
     )
 
 
-def _detect_container_type(
+def detect_container_type(
     dataset: fo.Dataset, label_field: str
 ) -> str:
     """Return ``'detections'`` or ``'polylines'`` for *label_field*."""
@@ -110,7 +110,7 @@ def filter_by_area_ratio(
         Filtered :class:`fo.DatasetView`.
     """
     resolved = resolve_label_field(dataset, label_field)
-    container = _detect_container_type(dataset, resolved)
+    container = detect_container_type(dataset, resolved)
     area_field = f"{resolved}.{container}.area_rel"
 
     if not dataset.has_sample_field(area_field):
@@ -245,7 +245,7 @@ class NegativeSampler:
         label_field: str,
     ) -> Tuple[fo.DatasetView, fo.DatasetView]:
         """Split *dataset* into positive (annotated) and negative (empty) views."""
-        container = _detect_container_type(dataset, label_field)
+        container = detect_container_type(dataset, label_field)
 
         has_ann = F(f"{label_field}.{container}").exists()
         non_empty = F(f"{label_field}.{container}").length() > 0

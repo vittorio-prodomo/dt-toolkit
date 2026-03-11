@@ -88,7 +88,7 @@ def test_tile_fo_yolo(tmp_path):
     tiler = DatasetTiler(config, verbose=False)
 
     with patch("detection_toolkit.fiftyone_hub.utils.resolve_label_field", return_value="segmentations"), \
-         patch("detection_toolkit.fiftyone_hub.utils._detect_container_type", return_value="polylines"):
+         patch("detection_toolkit.fiftyone_hub.utils.detect_container_type", return_value="polylines"):
         result = tiler.tile_fo(
             dataset,
             output_dir,
@@ -118,7 +118,7 @@ def test_tile_fo_coco(tmp_path):
     tiler = DatasetTiler(config, verbose=False)
 
     with patch("detection_toolkit.fiftyone_hub.utils.resolve_label_field", return_value="segmentations"), \
-         patch("detection_toolkit.fiftyone_hub.utils._detect_container_type", return_value="polylines"):
+         patch("detection_toolkit.fiftyone_hub.utils.detect_container_type", return_value="polylines"):
         result = tiler.tile_fo(
             dataset,
             output_dir,

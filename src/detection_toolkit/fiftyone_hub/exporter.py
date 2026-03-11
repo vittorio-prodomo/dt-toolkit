@@ -20,7 +20,7 @@ from fiftyone.utils.yolo import YOLOv5DatasetExporter
 from ..core.models import DatasetFormat
 from .utils import (
     NegativeSampler,
-    _detect_container_type,
+    detect_container_type,
     filter_by_area_ratio,
     resolve_label_field,
 )
@@ -405,7 +405,7 @@ class FiftyOneDatasetExporter:
 
         # Fall back to discovering classes from the data
         label_field = resolve_label_field(view)
-        container = _detect_container_type(view, label_field)
+        container = detect_container_type(view, label_field)
         discovered = sorted(
             view.distinct(f"{label_field}.{container}.label")
         )

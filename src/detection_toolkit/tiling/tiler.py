@@ -148,7 +148,7 @@ class DatasetTiler:
                 f"Unsupported output_format: {output_format!r}. Use 'yolo' or 'coco'."
             )
 
-        from ..fiftyone_hub.utils import resolve_label_field, _detect_container_type
+        from ..fiftyone_hub.utils import resolve_label_field, detect_container_type
         from .fo_extract import build_class_map, extract_annotations
 
         output_path = Path(output_path)
@@ -156,7 +156,7 @@ class DatasetTiler:
 
         # Resolve label field and container type
         resolved_field = resolve_label_field(dataset, label_field)
-        container_type = _detect_container_type(dataset, resolved_field)
+        container_type = detect_container_type(dataset, resolved_field)
 
         # Build class mapping
         class_map = build_class_map(dataset.classes)
