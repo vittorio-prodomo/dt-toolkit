@@ -275,3 +275,155 @@ class TestExtractFeatureVectors:
 
         assert vectors.shape == (3, 2)
         np.testing.assert_array_equal(vectors[:, -1], [1, 1, 1])
+
+
+class TestDatasetSplitter:
+    """Tests for the DatasetSplitter public API."""
+
+    def test_invalid_ratios_sum(self):
+        """Ratios summing to > 1.0 raise ValueError."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        with pytest.raises(ValueError, match="sum to"):
+            DatasetSplitter(ratios={"train": 0.9, "val": 0.2})
+
+    def test_invalid_ratios_negative(self):
+        """Negative ratios raise ValueError."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        with pytest.raises(ValueError, match="positive"):
+            DatasetSplitter(ratios={"train": -0.1, "val": 0.2})
+
+    def test_invalid_ratios_zero(self):
+        """Zero ratios raise ValueError."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        with pytest.raises(ValueError, match="positive"):
+            DatasetSplitter(ratios={"train": 0.0, "val": 1.0})
+
+    def test_empty_dataset_raises(self):
+        """Splitting an empty dataset raises ValueError."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=0)
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        with pytest.raises(ValueError, match="empty"):
+            splitter.split(dataset)
+
+    def test_nonexistent_group_field_raises(self):
+        """group_by field not in schema raises ValueError."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=10)
+        dataset.has_sample_field = MagicMock(return_value=False)
+
+        splitter = DatasetSplitter(
+            ratios={"train": 0.8, "val": 0.2},
+            group_by="bridge_id",
+        )
+        with pytest.raises(ValueError, match="bridge_id"):
+            splitter.split(dataset)
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_split_writes_field_and_returns_result(
+        self, mock_resolve, mock_discover, mock_extract,
+    ):
+        """split() should call set_values and return a SplitResult."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.return_value = "ground_truth"
+        mock_discover.return_value = ["crack", "spall"]
+
+        ids = [f"id_{i}" for i in range(10)]
+        vectors = np.zeros((10, 3))
+        vectors[:7, 0] = 1.0   # 7 items with class 0
+        vectors[7:, 1] = 1.0   # 3 items with class 1
+        mock_extract.return_value = (ids, vectors, ["crack", "spall", "_negative"])
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=10)
+        dataset.has_sample_field = MagicMock(return_value=False)
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        result = splitter.split(dataset)
+
+        # Check set_values was called with the split field
+        dataset.set_values.assert_called_once()
+        call_args = dataset.set_values.call_args
+        assert call_args[0][0] == "split"  # field name
+        split_values = call_args[0][1]
+        assert len(split_values) == 10
+        assert set(split_values) <= {"train", "val"}
+
+        # Check SplitResult
+        assert sum(result.split_counts.values()) == 10
+        assert "train" in result.class_distribution
+        assert "val" in result.class_distribution
+        assert result.group_counts is None
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_split_with_group_by(
+        self, mock_resolve, mock_discover, mock_extract,
+    ):
+        """split() with group_by aggregates before assigning."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.return_value = "ground_truth"
+        mock_discover.return_value = ["a", "b"]
+
+        ids = [f"id_{i}" for i in range(6)]
+        vectors = np.array([
+            [1, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [0, 0, 1],
+        ], dtype=float)
+        mock_extract.return_value = (ids, vectors, ["a", "b", "_negative"])
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=6)
+
+        def has_field(f):
+            return f in ("bridge_id", "ground_truth")
+
+        dataset.has_sample_field = MagicMock(side_effect=has_field)
+        # group_by field values
+        dataset.values = MagicMock(return_value=["g1", "g1", "g2", "g2", "g3", "g3"])
+
+        splitter = DatasetSplitter(
+            ratios={"train": 0.67, "val": 0.33},
+            group_by="bridge_id",
+        )
+        result = splitter.split(dataset)
+
+        assert result.group_counts is not None
+        assert sum(result.group_counts.values()) == 3  # 3 groups total
+        assert sum(result.split_counts.values()) == 6  # 6 images total
+
+    @patch("detection_toolkit.fiftyone_hub.splitter._extract_feature_vectors")
+    @patch("detection_toolkit.fiftyone_hub.splitter._discover_classes")
+    @patch("detection_toolkit.fiftyone_hub.splitter.resolve_label_field")
+    def test_no_label_field_raises(self, mock_resolve, mock_discover, mock_extract):
+        """When no suitable label field is found, ValueError is raised."""
+        from detection_toolkit.fiftyone_hub.splitter import DatasetSplitter
+
+        mock_resolve.side_effect = ValueError(
+            "Could not resolve a label field."
+        )
+
+        dataset = MagicMock()
+        dataset.__len__ = MagicMock(return_value=10)
+        dataset.has_sample_field = MagicMock(return_value=False)
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        with pytest.raises(ValueError, match="Could not resolve"):
+            splitter.split(dataset)

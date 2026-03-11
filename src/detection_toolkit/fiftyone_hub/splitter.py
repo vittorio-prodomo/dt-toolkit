@@ -13,6 +13,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Lazy import: populated on first use or replaced by tests via patching.
+try:
+    from .utils import resolve_label_field
+except ImportError:  # fiftyone not installed
+    resolve_label_field = None  # type: ignore[assignment]
+
 
 @dataclass
 class SplitResult:
@@ -240,3 +246,194 @@ def _extract_feature_vectors(
                 vectors[i, neg_idx] = 1.0
 
     return ids, vectors, out_classes
+
+
+def _discover_classes(
+    dataset, label_field: str,
+) -> List[str]:
+    """Auto-discover class names from a FiftyOne dataset.
+
+    Tries, in order:
+    1. ``dataset.classes[label_field]``
+    2. ``dataset.default_classes``
+    3. Distinct label values from the dataset
+    """
+    # 1. Per-field classes
+    field_classes = dataset.classes.get(label_field)
+    if field_classes:
+        return list(field_classes)
+
+    # 2. Default classes
+    if dataset.default_classes:
+        return list(dataset.default_classes)
+
+    # 3. Discover from data
+    label_type, values_path = _detect_label_type(dataset, label_field)
+    if label_type == "classification":
+        return sorted(dataset.distinct(f"{label_field}.label"))
+    elif label_type in ("detections", "polylines"):
+        container = "detections" if label_type == "detections" else "polylines"
+        return sorted(dataset.distinct(f"{label_field}.{container}.label"))
+    elif label_type == "segmentation":
+        logger.warning(
+            "Cannot discover class names for segmentation field '%s'. "
+            "Set dataset.classes['%s'] = [...] before splitting.",
+            label_field, label_field,
+        )
+        return []
+
+    return []
+
+
+class DatasetSplitter:
+    """Split a FiftyOne dataset into train/val/test with stratified balancing.
+
+    Usage::
+
+        splitter = DatasetSplitter(ratios={"train": 0.8, "val": 0.2})
+        result = splitter.split(dataset)
+
+    Args:
+        ratios: Target proportions per split. Values must be positive and
+            sum to at most 1.0.
+        label_field: Label field for stratification. Auto-resolved if *None*.
+        group_by: Sample field for group-aware splitting.
+        seed: Random seed for reproducibility.
+        split_field: Name of the sample field to write.
+    """
+
+    def __init__(
+        self,
+        ratios: Dict[str, float],
+        label_field: Optional[str] = None,
+        group_by: Optional[str] = None,
+        seed: int = 42,
+        split_field: str = "split",
+    ) -> None:
+        for name, val in ratios.items():
+            if val <= 0:
+                raise ValueError(
+                    f"All ratios must be positive, got {name}={val}"
+                )
+        ratio_sum = sum(ratios.values())
+        if ratio_sum > 1.0 + 1e-9:
+            raise ValueError(
+                f"Ratios must sum to <= 1.0, got {ratio_sum:.4f}"
+            )
+
+        self.ratios = ratios
+        self.label_field = label_field
+        self.group_by = group_by
+        self.seed = seed
+        self.split_field = split_field
+
+    def split(
+        self,
+        dataset,
+        class_list: Optional[List[str]] = None,
+    ) -> SplitResult:
+        """Split the dataset and write the split field.
+
+        Args:
+            dataset: FiftyOne Dataset or DatasetView.
+            class_list: Ordered class names for stratification.
+                Auto-discovered from the dataset if *None*.
+
+        Returns:
+            :class:`SplitResult` with distribution statistics.
+        """
+        n_samples = len(dataset)
+        if n_samples == 0:
+            raise ValueError("Dataset is empty")
+
+        # Validate group_by field exists
+        if self.group_by and not dataset.has_sample_field(self.group_by):
+            raise ValueError(
+                f"Field '{self.group_by}' not found in dataset schema"
+            )
+
+        # Resolve label field (module-level name; patchable in tests)
+        resolved_field = resolve_label_field(dataset, self.label_field)
+
+        # Discover classes if not provided
+        if class_list is None:
+            class_list = _discover_classes(dataset, resolved_field)
+
+        # Extract feature vectors
+        ids, vectors, out_classes = _extract_feature_vectors(
+            dataset, resolved_field, class_list,
+        )
+
+        # Group handling
+        group_counts = None
+        if self.group_by:
+            group_values = dataset.values(self.group_by)
+            group_keys, group_vecs, group_members = _aggregate_groups(
+                ids, vectors, group_values,
+            )
+
+            # Warn about large groups
+            min_split_ratio = min(self.ratios.values())
+            target_min_split = int(n_samples * min_split_ratio)
+            for gi, gk in enumerate(group_keys):
+                group_size = len(group_members[gi])
+                if group_size > target_min_split > 0:
+                    logger.warning(
+                        "Group '%s' has %d images, exceeding target for "
+                        "smallest split (%d). Consider smaller groups or "
+                        "a different grouping field.",
+                        gk, group_size, target_min_split,
+                    )
+
+            # Assign groups to splits
+            group_assignment = _greedy_assign(
+                group_vecs, self.ratios, self.seed,
+            )
+
+            # Expand group assignment back to sample IDs
+            id_to_split: Dict[str, str] = {}
+            group_counts = {}
+            for split_name, group_indices in group_assignment.items():
+                group_counts[split_name] = len(group_indices)
+                for gi in group_indices:
+                    for sid in group_members[gi]:
+                        id_to_split[sid] = split_name
+
+            split_values = [id_to_split[sid] for sid in ids]
+        else:
+            assignment = _greedy_assign(vectors, self.ratios, self.seed)
+
+            idx_to_split: Dict[int, str] = {}
+            for split_name, indices in assignment.items():
+                for idx in indices:
+                    idx_to_split[idx] = split_name
+
+            split_values = [idx_to_split[i] for i in range(n_samples)]
+
+        # Write the split field
+        dataset.set_values(self.split_field, split_values)
+
+        # Compute result statistics
+        split_counts_result: Dict[str, int] = {}
+        class_dist: Dict[str, Dict[str, int]] = {}
+        for split_name in self.ratios:
+            mask = [sv == split_name for sv in split_values]
+            split_counts_result[split_name] = sum(mask)
+            split_vecs = vectors[mask]
+            class_dist[split_name] = {
+                cls: int(split_vecs[:, ci].sum())
+                for ci, cls in enumerate(out_classes)
+            }
+
+        logger.info(
+            "Split complete: %s",
+            ", ".join(
+                f"{k}={v}" for k, v in split_counts_result.items()
+            ),
+        )
+
+        return SplitResult(
+            split_counts=split_counts_result,
+            class_distribution=class_dist,
+            group_counts=group_counts,
+        )
