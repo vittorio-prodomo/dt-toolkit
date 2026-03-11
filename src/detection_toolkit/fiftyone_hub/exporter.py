@@ -379,6 +379,52 @@ class FiftyOneDatasetExporter:
         return []
 
     @staticmethod
+    def _should_skip_media(split_view, target_image_dir) -> bool:
+        """Check if all sample images already live in the target directory.
+
+        When source images resolve to paths inside *target_image_dir*,
+        media export can be skipped to avoid overwriting or destroying
+        the originals.
+
+        Args:
+            split_view: FiftyOne DatasetView for a single split.
+            target_image_dir: Target directory for exported images.
+
+        Returns:
+            ``True`` if all filepaths resolve to inside *target_image_dir*.
+        """
+        filepaths = split_view.values("filepath")
+        if not filepaths:
+            return False
+
+        resolved_target = Path(target_image_dir).resolve()
+
+        overlap_count = 0
+        for fp in filepaths:
+            resolved = Path(fp).resolve()
+            if resolved.is_relative_to(resolved_target):
+                overlap_count += 1
+
+        if overlap_count == len(filepaths):
+            logger.info(
+                "All %d images already in %s, skipping media export",
+                len(filepaths),
+                resolved_target,
+            )
+            return True
+
+        if overlap_count > 0:
+            logger.warning(
+                "%d of %d images already in %s but others are not. "
+                "Proceeding with media export for this split.",
+                overlap_count,
+                len(filepaths),
+                resolved_target,
+            )
+
+        return False
+
+    @staticmethod
     def _fix_yolo_yaml(yaml_path: Path, classes: List[str]) -> None:
         """Post-process the YOLO ``data.yaml`` written by FiftyOne.
 
