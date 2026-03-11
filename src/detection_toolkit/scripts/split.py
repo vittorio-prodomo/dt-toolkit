@@ -48,17 +48,34 @@ def _print_summary(result):
             if cls not in all_classes:
                 all_classes.append(cls)
 
-    header = f"{'':>14s}" + "".join(f"{s:>10s}" for s in splits)
-    print(f"\nSplit distribution:\n{header}")
+    display_names = {
+        cls: cls.lstrip("_") if cls.startswith("_") else cls
+        for cls in all_classes
+    }
+
+    # Compute column widths from content
+    label_w = max(
+        len("images"),
+        *(len(n) for n in display_names.values()),
+    ) + 2
+    col_w = max(8, *(len(s) for s in splits)) + 2
+
+    # Build rows
+    total = sum(result.split_counts.values())
+    sep = "-" * (label_w + col_w * len(splits))
+
+    print(f"\nSplit distribution ({total} images):\n")
+    print(f"{'':>{label_w}}" + "".join(f"{s:>{col_w}}" for s in splits))
+    print(sep)
     print(
-        f"{'images':>14s}"
-        + "".join(f"{result.split_counts[s]:>10d}" for s in splits)
+        f"{'images':>{label_w}}"
+        + "".join(f"{result.split_counts[s]:>{col_w}d}" for s in splits)
     )
+    print(sep)
     for cls in all_classes:
-        display_name = cls.lstrip("_") if cls.startswith("_") else cls
-        row = f"{display_name:>14s}"
+        row = f"{display_names[cls]:>{label_w}}"
         for s in splits:
-            row += f"{result.class_distribution[s].get(cls, 0):>10d}"
+            row += f"{result.class_distribution[s].get(cls, 0):>{col_w}d}"
         print(row)
     print()
 
