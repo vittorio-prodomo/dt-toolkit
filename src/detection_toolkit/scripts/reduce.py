@@ -10,6 +10,8 @@ Usage::
 import logging
 import sys
 
+import numpy as np
+
 from detection_toolkit.cli import make_parser
 
 
@@ -106,22 +108,21 @@ def main(argv=None):
     dataset = _load_dataset(args.dataset)
     kwargs = _collect_method_kwargs(args)
 
-    reducer = DimensionalityReducer(
-        method=args.method,
-        n_components=args.n_components,
-        random_state=args.random_state,
-        **kwargs,
-    )
+    reducer = DimensionalityReducer()
 
     result = reducer.reduce(
         dataset,
         input_field=args.input_field,
         output_field=args.output_field,
+        method=args.method,
+        n_components=args.n_components,
+        random_state=args.random_state,
         overwrite=args.overwrite,
+        **kwargs,
     )
 
-    n_samples = len(dataset)
-    valid = result.get("valid", n_samples)
+    n_samples = result.shape[0]
+    valid = int(np.isfinite(result).all(axis=1).sum())
 
     print(f"Reduction complete ({args.method}): {n_samples} samples")
     print(f"  input:  {args.input_field}")

@@ -94,7 +94,7 @@ class DimensionalityReducer:
         # --- Store on dataset (use index membership, not NaN check) ---
         valid_set = set(valid_indices)
         stored_values = [
-            full_result[i].tolist() if i in valid_set else None
+            full_result[i] if i in valid_set else None
             for i in range(n_total)
         ]
         dataset.set_values(output_field, stored_values)
