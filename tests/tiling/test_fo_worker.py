@@ -3,17 +3,15 @@
 from pathlib import Path
 
 import numpy as np
-import rasterio
+import pyvips
 
 
 def _create_test_image(path: Path, width: int, height: int, bands: int = 3):
-    """Write a simple rasterio image for testing."""
-    data = np.random.randint(0, 255, (bands, height, width), dtype=np.uint8)
-    with rasterio.open(
-        path, "w", driver="JPEG", width=width, height=height,
-        count=bands, dtype="uint8", quality=90,
-    ) as dst:
-        dst.write(data)
+    """Write a simple test JPEG image."""
+    data = np.random.randint(0, 255, (height, width, bands), dtype=np.uint8)
+    img = pyvips.Image.new_from_memory(data.data, width, height, bands, "uchar")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.jpegsave(str(path), Q=90)
 
 
 def test_tile_single_fo_sample_yolo_bbox(tmp_path):

@@ -8,16 +8,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import rasterio
+import pyvips
 
 
 def _create_test_image(path: Path, width: int, height: int):
-    data = np.random.randint(0, 255, (3, height, width), dtype=np.uint8)
-    with rasterio.open(
-        path, "w", driver="JPEG", width=width, height=height,
-        count=3, dtype="uint8", quality=90,
-    ) as dst:
-        dst.write(data)
+    data = np.random.randint(0, 255, (height, width, 3), dtype=np.uint8)
+    img = pyvips.Image.new_from_memory(data.data, width, height, 3, "uchar")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.jpegsave(str(path), Q=90)
 
 
 def _make_mock_dataset(tmp_path, num_samples=3, img_size=200):
