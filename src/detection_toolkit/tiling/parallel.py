@@ -6,7 +6,6 @@ that can be dispatched to a :class:`~concurrent.futures.ProcessPoolExecutor`.
 
 import logging
 import os
-import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -45,8 +44,7 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
     Returns:
         ``(positive_tiles, negative_tiles)``
     """
-    import rasterio
-    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+    import pyvips
 
     from .config import TilingConfig
     from .geometry import compute_tile_grid
@@ -72,46 +70,42 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
     negative = 0
 
     try:
-        with rasterio.open(img_path) as src:
-            img_w, img_h = src.width, src.height
-            bands = src.count
+        img = pyvips.Image.new_from_file(str(img_path))
+        img_w, img_h = img.width, img.height
 
-            # Parse annotations
-            annotations = _parse_yolo_labels(label_path, img_w, img_h)
+        # Parse annotations
+        annotations = _parse_yolo_labels(label_path, img_w, img_h)
 
-            # Compute tile grid
-            tiles = compute_tile_grid(
-                img_w, img_h, cfg.tile_size,
-                cfg.overlap_percent, cfg.edge_behavior,
+        # Compute tile grid
+        tiles = compute_tile_grid(
+            img_w, img_h, cfg.tile_size,
+            cfg.overlap_percent, cfg.edge_behavior,
+        )
+
+        for idx, (tx, ty, tw, th) in enumerate(tiles):
+            tile_name = f"{img_path.stem}_tile_{idx:0{pad_width}d}"
+
+            # Clip annotations to tile
+            tile_anns = _clip_annotations(
+                annotations, tx, ty, tw, th, cfg,
             )
 
-            for idx, (tx, ty, tw, th) in enumerate(tiles):
-                tile_name = f"{img_path.stem}_tile_{idx:0{pad_width}d}"
+            # Write tile image
+            tile_img_path = img_out / f"{tile_name}{img_path.suffix}"
+            _write_tile_image(img, tx, ty, tw, th, tile_img_path, cfg)
 
-                # Clip annotations to tile
-                tile_anns = _clip_annotations(
-                    annotations, tx, ty, tw, th, cfg,
+            # Write tile label
+            tile_lbl_path = lbl_out / f"{tile_name}.txt"
+            if tile_anns:
+                _write_yolo_label(
+                    tile_lbl_path, tile_anns, tw, th,
+                    disjoint_strategy=cfg.disjoint_strategy,
                 )
-
-                # Write tile image
-                tile_img_path = img_out / f"{tile_name}{img_path.suffix}"
-                _write_tile_image(
-                    src, tx, ty, tw, th, tile_img_path,
-                    cfg, bands,
-                )
-
-                # Write tile label
-                tile_lbl_path = lbl_out / f"{tile_name}.txt"
-                if tile_anns:
-                    _write_yolo_label(
-                        tile_lbl_path, tile_anns, tw, th,
-                        disjoint_strategy=cfg.disjoint_strategy,
-                    )
-                    positive += 1
-                else:
-                    # Empty label for negative tile
-                    tile_lbl_path.write_text("")
-                    negative += 1
+                positive += 1
+            else:
+                # Empty label for negative tile
+                tile_lbl_path.write_text("")
+                negative += 1
 
     except Exception as exc:
         logger.error("Failed to tile %s: %s", img_path.name, exc)
@@ -131,8 +125,7 @@ def tile_single_image(args: Tuple) -> int:
     Returns:
         Number of tiles written.
     """
-    import rasterio
-    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+    import pyvips
 
     from .config import TilingConfig
     from .geometry import compute_tile_grid
@@ -146,16 +139,16 @@ def tile_single_image(args: Tuple) -> int:
     count = 0
 
     try:
-        with rasterio.open(img_path) as src:
-            tiles = compute_tile_grid(
-                src.width, src.height, cfg.tile_size,
-                cfg.overlap_percent, cfg.edge_behavior,
-            )
-            for idx, (tx, ty, tw, th) in enumerate(tiles):
-                tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
-                out_path = output_dir / f"{tile_name}{img_path.suffix}"
-                _write_tile_image(src, tx, ty, tw, th, out_path, cfg, src.count)
-                count += 1
+        img = pyvips.Image.new_from_file(str(img_path))
+        tiles = compute_tile_grid(
+            img.width, img.height, cfg.tile_size,
+            cfg.overlap_percent, cfg.edge_behavior,
+        )
+        for idx, (tx, ty, tw, th) in enumerate(tiles):
+            tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
+            out_path = output_dir / f"{tile_name}{img_path.suffix}"
+            _write_tile_image(img, tx, ty, tw, th, out_path, cfg)
+            count += 1
     except Exception as exc:
         logger.error("Failed to tile %s: %s", img_path.name, exc)
         return 0
@@ -278,63 +271,38 @@ def _clip_annotations(
 
 
 def _write_tile_image(
-    src,  # rasterio DatasetReader
+    img,  # pyvips.Image
     tx: int,
     ty: int,
     tw: int,
     th: int,
     out_path: Path,
     cfg,
-    bands: int,
 ) -> None:
-    """Read a tile window from *src* and write it to *out_path*."""
-    import numpy as np
-    import rasterio
-    from rasterio.windows import Window
+    """Crop a tile from *img* and write it to *out_path*."""
+    import pyvips
 
-    # Read valid region
-    read_w = min(tw, src.width - tx)
-    read_h = min(th, src.height - ty)
-    window = Window(tx, ty, read_w, read_h)
-    data = src.read(window=window)  # shape: (bands, h, w)
+    read_w = min(tw, img.width - tx)
+    read_h = min(th, img.height - ty)
 
-    # Pad if needed
+    tile = img.crop(tx, ty, read_w, read_h)
+
+    # Pad edge tiles if needed
     if cfg.edge_behavior == "padding" and (read_w < tw or read_h < th):
-        padded = np.full(
-            (bands, th, tw),
-            fill_value=0,
-            dtype=data.dtype,
+        r, g, b = cfg.padding_value
+        bg = [r, g, b, 255] if img.bands > 3 else [r, g, b]
+        tile = tile.gravity(
+            "north-west", tw, th,
+            extend="background", background=bg,
         )
-        # Fill with padding colour
-        for b in range(min(bands, 3)):
-            padded[b, :, :] = cfg.padding_value[b]
-        if bands > 3:
-            padded[3:, :, :] = 255  # alpha
-        padded[:, :read_h, :read_w] = data
-        data = padded
 
-    # Determine driver
     ext = out_path.suffix.lower()
-    driver_map = {
-        ".jpg": "JPEG", ".jpeg": "JPEG",
-        ".png": "PNG",
-        ".tif": "GTiff", ".tiff": "GTiff",
-        ".bmp": "BMP",
-    }
-    driver = driver_map.get(ext, "JPEG")
-
-    kwargs = {
-        "driver": driver,
-        "width": data.shape[2],
-        "height": data.shape[1],
-        "count": bands,
-        "dtype": data.dtype,
-    }
-    if driver == "JPEG":
-        kwargs["quality"] = cfg.compression
-
-    with rasterio.open(out_path, "w", **kwargs) as dst:
-        dst.write(data)
+    if ext in (".jpg", ".jpeg"):
+        tile.jpegsave(str(out_path), Q=cfg.compression)
+    elif ext == ".png":
+        tile.pngsave(str(out_path))
+    else:
+        tile.write_to_file(str(out_path))
 
 
 # ------------------------------------------------------------------
@@ -359,8 +327,7 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
         ``(positive_tiles, negative_tiles, coco_entries)`` where
         *coco_entries* is an empty list for YOLO output.
     """
-    import rasterio
-    warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+    import pyvips
 
     from .config import TilingConfig
     from .geometry import compute_tile_grid
@@ -393,65 +360,62 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
     coco_entries: List[Dict] = []
 
     try:
-        with rasterio.open(img_path) as src:
-            img_w, img_h = src.width, src.height
-            bands = src.count
+        img = pyvips.Image.new_from_file(str(img_path))
+        img_w, img_h = img.width, img.height
 
-            tiles = compute_tile_grid(
-                img_w, img_h, cfg.tile_size,
-                cfg.overlap_percent, cfg.edge_behavior,
+        tiles = compute_tile_grid(
+            img_w, img_h, cfg.tile_size,
+            cfg.overlap_percent, cfg.edge_behavior,
+        )
+
+        for idx, (tx, ty, tw, th) in enumerate(tiles):
+            tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
+
+            # Clip annotations to tile
+            tile_anns = _clip_annotations(
+                annotations, tx, ty, tw, th, cfg,
             )
 
-            for idx, (tx, ty, tw, th) in enumerate(tiles):
-                tile_name = f"{tile_prefix}_tile_{idx:0{pad_width}d}"
+            # Write tile image
+            tile_img_path = img_out / f"{tile_name}{img_path.suffix}"
+            _write_tile_image(img, tx, ty, tw, th, tile_img_path, cfg)
 
-                # Clip annotations to tile
-                tile_anns = _clip_annotations(
-                    annotations, tx, ty, tw, th, cfg,
-                )
+            has_anns = bool(tile_anns)
 
-                # Write tile image
-                tile_img_path = img_out / f"{tile_name}{img_path.suffix}"
-                _write_tile_image(
-                    src, tx, ty, tw, th, tile_img_path, cfg, bands,
-                )
+            if output_format == "yolo":
+                tile_lbl_path = lbl_out / f"{tile_name}.txt"
+                if has_anns:
+                    _write_yolo_label(
+                        tile_lbl_path, tile_anns, tw, th,
+                        disjoint_strategy=cfg.disjoint_strategy,
+                    )
+                    positive += 1
+                else:
+                    tile_lbl_path.write_text("")
+                    negative += 1
 
-                has_anns = bool(tile_anns)
-
-                if output_format == "yolo":
-                    tile_lbl_path = lbl_out / f"{tile_name}.txt"
-                    if has_anns:
-                        _write_yolo_label(
-                            tile_lbl_path, tile_anns, tw, th,
-                            disjoint_strategy=cfg.disjoint_strategy,
-                        )
-                        positive += 1
-                    else:
-                        tile_lbl_path.write_text("")
-                        negative += 1
-
-                elif output_format == "coco":
-                    tile_file_name = f"{tile_name}{img_path.suffix}"
-                    image_entry = {
-                        "file_name": tile_file_name,
-                        "width": tw,
-                        "height": th,
-                    }
-                    if has_anns:
-                        ann_entries = _to_coco_annotations(
-                            tile_anns, tw, th, class_list,
-                        )
-                        coco_entries.append({
-                            "image": image_entry,
-                            "annotations": ann_entries,
-                        })
-                        positive += 1
-                    else:
-                        coco_entries.append({
-                            "image": image_entry,
-                            "annotations": [],
-                        })
-                        negative += 1
+            elif output_format == "coco":
+                tile_file_name = f"{tile_name}{img_path.suffix}"
+                image_entry = {
+                    "file_name": tile_file_name,
+                    "width": tw,
+                    "height": th,
+                }
+                if has_anns:
+                    ann_entries = _to_coco_annotations(
+                        tile_anns, tw, th, class_list,
+                    )
+                    coco_entries.append({
+                        "image": image_entry,
+                        "annotations": ann_entries,
+                    })
+                    positive += 1
+                else:
+                    coco_entries.append({
+                        "image": image_entry,
+                        "annotations": [],
+                    })
+                    negative += 1
 
     except Exception as exc:
         logger.error("Failed to tile %s: %s", img_path.name, exc)
