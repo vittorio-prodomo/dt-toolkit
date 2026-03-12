@@ -646,6 +646,9 @@ class DatasetTiler:
                     self.config.overlap_percent, self.config.edge_behavior,
                 )
 
+                import pyvips
+                img = pyvips.Image.new_from_file(str(src_file))
+
                 for idx, (tx, ty, tw, th) in enumerate(tiles):
                     tile_name = f"{src_file.stem}_tile_{idx:0{pad_width}d}"
                     tile_ext = src_file.suffix
@@ -658,7 +661,7 @@ class DatasetTiler:
                     # Write tile image
                     tile_img_path = img_dir / f"{tile_name}{tile_ext}"
                     self._write_coco_tile_image(
-                        src_file, tx, ty, tw, th, tile_img_path,
+                        img, tx, ty, tw, th, tile_img_path,
                     )
 
                     # Add to output JSON
@@ -875,57 +878,34 @@ class DatasetTiler:
 
     def _write_coco_tile_image(
         self,
-        src_path: Path,
+        img,  # pyvips.Image
         tx: int,
         ty: int,
         tw: int,
         th: int,
         out_path: Path,
     ) -> None:
-        """Read a tile region and write it out."""
-        import warnings
-        import rasterio
-        from rasterio.windows import Window
-        warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+        """Crop a tile from *img* and write it out."""
+        read_w = min(tw, img.width - tx)
+        read_h = min(th, img.height - ty)
 
-        with rasterio.open(src_path) as src:
-            read_w = min(tw, src.width - tx)
-            read_h = min(th, src.height - ty)
-            window = Window(tx, ty, read_w, read_h)
-            data = src.read(window=window)
-            bands = src.count
+        tile = img.crop(tx, ty, read_w, read_h)
 
         if self.config.edge_behavior == "padding" and (read_w < tw or read_h < th):
-            padded = np.full((bands, th, tw), fill_value=0, dtype=data.dtype)
-            for b in range(min(bands, 3)):
-                padded[b, :, :] = self.config.padding_value[b]
-            if bands > 3:
-                padded[3:, :, :] = 255
-            padded[:, :read_h, :read_w] = data
-            data = padded
+            r, g, b = self.config.padding_value
+            bg = [r, g, b, 255] if img.bands > 3 else [r, g, b]
+            tile = tile.gravity(
+                "north-west", tw, th,
+                extend="background", background=bg,
+            )
 
         ext = out_path.suffix.lower()
-        driver_map = {
-            ".jpg": "JPEG", ".jpeg": "JPEG",
-            ".png": "PNG",
-            ".tif": "GTiff", ".tiff": "GTiff",
-            ".bmp": "BMP",
-        }
-        driver = driver_map.get(ext, "JPEG")
-
-        kwargs: Dict[str, Any] = {
-            "driver": driver,
-            "width": data.shape[2],
-            "height": data.shape[1],
-            "count": bands,
-            "dtype": data.dtype,
-        }
-        if driver == "JPEG":
-            kwargs["quality"] = self.config.compression
-
-        import rasterio
-        with rasterio.open(out_path, "w", **kwargs) as dst:
-            dst.write(data)
+        if ext in (".jpg", ".jpeg"):
+            tile.jpegsave(str(out_path), Q=self.config.compression)
+        elif ext == ".png":
+            tile.pngsave(str(out_path))
+        else:
+            tile.write_to_file(str(out_path))
 
     # ------------------------------------------------------------------
     # Negative sampling
