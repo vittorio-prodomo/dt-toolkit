@@ -46,16 +46,9 @@ dependencies = [
 
 [project.optional-dependencies]
 fiftyone = [
-    "fiftyone>=0.23",
-]
-train = [
-    "ultralytics>=8.0",
-]
-train-detectron2 = [
-    "detectron2",
-]
-train-rfdetr = [
-    "rfdetr",
+    "fiftyone",
+    "voxel51-eta",
+    "fiftyone-brain",
 ]
 reduce = [
     "umap-learn",
@@ -70,7 +63,7 @@ embed = [
     "torch",
 ]
 all = [
-    "detection-toolkit[fiftyone,train,train-rfdetr,embed,reduce,cluster]",
+    "detection-toolkit[fiftyone,embed,reduce,cluster]",
 ]
 
 [project.scripts]
@@ -79,7 +72,6 @@ dt-convert = "detection_toolkit.scripts.convert:main"
 dt-tile = "detection_toolkit.scripts.tile:main"
 dt-filter = "detection_toolkit.scripts.filter:main"
 dt-merge = "detection_toolkit.scripts.merge:main"
-dt-train = "detection_toolkit.scripts.train:main"
 dt-import-fo = "detection_toolkit.scripts.import_fo:main"
 dt-export-fo = "detection_toolkit.scripts.export_fo:main"
 dt-enrich = "detection_toolkit.scripts.enrich:main"
@@ -95,6 +87,19 @@ dt-visualize = "detection_toolkit.scripts.visualize:main"
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
 Issues = "https://github.com/vittorio-prodomo/detection-toolkit/issues"
+
+[tool.uv.sources]
+cocoyolo = { path = "../cocoyolo", editable = true }
+fiftyone = { path = "../../../globally_useful_repos/fiftyone", editable = true }
+voxel51-eta = { path = "../../../globally_useful_repos/fiftyone/eta", editable = true }
+fiftyone-brain = { path = "../../../globally_useful_repos/fiftyone-brain", editable = true }
+
+[tool.uv]
+override-dependencies = [
+    # Local forks — allow any version to bypass fiftyone's pinned constraints
+    "fiftyone-brain>=0",
+    "voxel51-eta>=0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/detection_toolkit"]
