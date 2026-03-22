@@ -4,7 +4,14 @@ from pathlib import Path
 from typing import Union
 
 from cocoyolo.image_utils import get_image_size  # noqa: F401 — re-export
-from cocoyolo.io_utils import find_coco_image as find_image_file  # noqa: F401
+
+
+def find_image_file(filename: str, search_root: Path) -> "Path | None":
+    """Find an image by *filename* under *search_root* (recursive, first match)."""
+    for p in Path(search_root).rglob(filename):
+        if p.is_file():
+            return p
+    return None
 
 IMAGE_EXTENSIONS = frozenset(
     {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}

@@ -8,7 +8,7 @@ from typing import Optional, Tuple, Union
 import numpy as np
 
 from cocoyolo.io_utils import decode_rle  # noqa: F401 — re-export
-from cocoyolo.io_utils import find_coco_image as find_coco_image_file  # noqa: F401
+from ..core.image_utils import find_image_file as find_coco_image_file  # noqa: F401
 
 from ..core.models import TaskType
 
