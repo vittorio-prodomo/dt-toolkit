@@ -128,6 +128,10 @@ class DatasetEnricher:
             self._enrich_field(dataset, field, batch_size)
             enriched_any = True
 
+        if enriched_any:
+            dataset.add_dynamic_sample_fields()
+            logger.info("Registered dynamic sample fields in schema")
+
         return enriched_any
 
     # ------------------------------------------------------------------
