@@ -83,6 +83,7 @@ dt-embed = "detection_toolkit.scripts.embed:main"
 dt-thumbnails = "detection_toolkit.scripts.thumbnails:main"
 dt-split = "detection_toolkit.scripts.split:main"
 dt-visualize = "detection_toolkit.scripts.visualize:main"
+dt-rename = "detection_toolkit.scripts.rename:main"
 
 [project.urls]
 Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
