@@ -533,15 +533,25 @@ class FiftyOneDatasetLoader:
             overwrite=True,
         )
 
-    @staticmethod
+    _SPLIT_DIR_ALIASES = {
+        "val": ["val", "validation", "valid"],
+        "train": ["train"],
+        "test": ["test"],
+    }
+
+    @classmethod
     def _coco_data_path(
-        split: DatasetSplit, split_name: str, dataset_path: Path
+        cls, split: DatasetSplit, split_name: str, dataset_path: Path
     ) -> Path:
         """Return the image directory for a COCO split.
 
         For Roboflow-inline datasets (COCO-B), images sit beside the JSON
         so we return a relative path from the dataset root.  For standard
         COCO layouts (A/C), images are in ``images/{split}/``.
+
+        When the normalized split name (e.g. ``val``) doesn't match the
+        actual directory on disk (e.g. ``validation``), tries common
+        aliases before falling back to the normalized name.
         """
         if split.coco_images_root is not None:
             try:
@@ -550,6 +560,13 @@ class FiftyOneDatasetLoader:
                 )
             except ValueError:
                 return split.coco_images_root
+
+        candidates = cls._SPLIT_DIR_ALIASES.get(split_name, [split_name])
+        for candidate in candidates:
+            path = dataset_path / "images" / candidate
+            if path.is_dir():
+                return Path("images") / candidate
+
         return Path("images") / split_name
 
     @staticmethod

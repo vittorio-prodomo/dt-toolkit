@@ -17,7 +17,9 @@ from typing import Dict, List, Optional, Union
 
 import yaml
 
-from .image_utils import _in_hidden_dir, find_image_file, find_images_in_dir
+from cocoyolo.io_utils import build_image_index
+
+from .image_utils import _in_hidden_dir, find_images_in_dir
 from .models import DatasetFormat, DatasetInfo, DatasetSplit, TaskType
 
 logger = logging.getLogger(__name__)
@@ -404,23 +406,16 @@ class DatasetLoader:
         with open(json_path, "r") as fh:
             data = json.load(fh)
 
+        # Single upfront scan: build {basename: path} index once
+        index = build_image_index(search_root)
+
         paths: List[Path] = []
         for img_entry in data.get("images", []):
             fn = img_entry.get("file_name", "")
             if not fn:
                 continue
-            # Try direct concatenation first (faster than rglob)
-            direct = search_root / fn
-            if direct.exists():
-                paths.append(direct)
-                continue
-            # Fallback: look inside images/ subdir
-            via_images = search_root / "images" / fn
-            if via_images.exists():
-                paths.append(via_images)
-                continue
-            # Last resort: recursive search
-            found = find_image_file(Path(fn).name, search_root)
+            basename = Path(fn).name
+            found = index.get(basename)
             if found:
                 paths.append(found)
         return paths
