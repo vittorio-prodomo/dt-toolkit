@@ -150,13 +150,16 @@ def create_thumbnails(
 ) -> None:
     """Create thumbnail images for grid display in the FiftyOne app.
 
-    Writes thumbnails to a ``.thumbnails/`` hidden folder and configures
-    the dataset's app config to use them in the grid view.
+    Writes thumbnails to a hidden ``.{dataset_name}_thumbnails/`` folder
+    placed as a **sibling** of the dataset root directory, so that scripts
+    which recursively glob for images inside the dataset never pick up
+    thumbnails by accident.
 
     Args:
         dataset: The FiftyOne dataset.
-        output_dir: Parent directory for the ``.thumbnails/`` folder.
-            If *None*, the common ancestor of all sample filepaths is used.
+        output_dir: Explicit directory for the thumbnails folder.
+            If *None*, the common ancestor of all sample filepaths is used
+            and the thumbnails folder is placed in its **parent**.
         size: Thumbnail height in pixels (aspect ratio is preserved).
     """
     import fiftyone.utils.image as foui
@@ -172,10 +175,12 @@ def create_thumbnails(
         common = os.path.commonpath(filepaths)
         # commonpath may return a file path if all samples share a dir;
         # ensure we have a directory.
-        output_dir = Path(common) if os.path.isdir(common) else Path(common).parent
+        dataset_root = Path(common) if os.path.isdir(common) else Path(common).parent
+        output_dir = dataset_root.parent
+    else:
+        output_dir = Path(output_dir)
 
-    output_dir = Path(output_dir)
-    thumbnails_path = output_dir / ".thumbnails"
+    thumbnails_path = output_dir / f".{dataset.name}_thumbnails"
 
     if thumbnails_path.exists() and dataset.has_sample_field("thumbnail_path"):
         logger.info("Thumbnails already exist at %s, skipping", thumbnails_path)

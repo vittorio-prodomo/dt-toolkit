@@ -23,8 +23,8 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--output-dir", "-o", default=None,
-        help="Parent directory for .thumbnails/ folder "
-             "(default: common ancestor of sample filepaths).",
+        help="Directory where the .{name}_thumbnails/ folder is created "
+             "(default: parent of the dataset's common filepath ancestor).",
     )
 
     g = p.add_mutually_exclusive_group()
