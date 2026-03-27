@@ -10,6 +10,13 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _get(item, key):
+    """Get a field from either a FiftyOne label object or a plain dict."""
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key, None)
+
+
 def build_class_map(
     classes_dict: Optional[Dict[str, List[str]]],
 ) -> Dict[str, int]:
@@ -58,32 +65,53 @@ def extract_annotations(
     result: List[Dict] = []
 
     for item in items:
-        label = item.get("label")
+        label = _get(item, "label")
         if label not in class_map:
             continue
         class_id = class_map[label]
 
         if container_type == "detections":
-            bbox_rel = item.get("bounding_box")
+            bbox_rel = _get(item, "bounding_box")
             if bbox_rel is None or len(bbox_rel) != 4:
                 continue
             # FiftyOne bbox: [x, y, w, h] relative to image size
-            abs_bbox = [
-                bbox_rel[0] * img_w,
-                bbox_rel[1] * img_h,
-                bbox_rel[2] * img_w,
-                bbox_rel[3] * img_h,
-            ]
-            # TODO: mask support — when Detection has .mask, convert via
-            # cocoyolo.geometry.mask_to_polygons() instead of using bbox.
+            abs_x = bbox_rel[0] * img_w
+            abs_y = bbox_rel[1] * img_h
+            abs_w = bbox_rel[2] * img_w
+            abs_h = bbox_rel[3] * img_h
+
+            mask = _get(item, "mask")
+            if mask is not None:
+                # Convert instance mask to polygon(s) in absolute image coords.
+                # FiftyOne mask shape is (mask_h, mask_w) in bbox-local pixels.
+                from cocoyolo.geometry import mask_to_polygons
+                import numpy as np
+                mask_h, mask_w = mask.shape
+                raw_polys = mask_to_polygons(mask.astype(np.uint8))
+                if raw_polys:
+                    abs_polygons = [
+                        [
+                            (abs_x + pt[0] * abs_w / mask_w,
+                             abs_y + pt[1] * abs_h / mask_h)
+                            for pt in poly
+                        ]
+                        for poly in raw_polys
+                    ]
+                    result.append({
+                        "class_id": class_id,
+                        "type": "polygon",
+                        "polygons": abs_polygons,
+                    })
+                    continue
+            # No mask (or empty mask) — fall back to bbox
             result.append({
                 "class_id": class_id,
                 "type": "bbox",
-                "bbox": abs_bbox,
+                "bbox": [abs_x, abs_y, abs_w, abs_h],
             })
 
         elif container_type == "polylines":
-            points_groups = item.get("points")
+            points_groups = _get(item, "points")
             if not points_groups:
                 continue
             # FiftyOne Polyline.points: list of rings, each a list of

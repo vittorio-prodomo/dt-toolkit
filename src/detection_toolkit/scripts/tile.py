@@ -51,6 +51,12 @@ def parse_args(argv=None):
         "--no-reimport", action="store_true",
         help="Do not reimport tiled results back into FiftyOne.",
     )
+    fo_group.add_argument(
+        "--use-polylines", action="store_true",
+        help="When reimporting into FiftyOne, store COCO segmentation polygons "
+             "as Polylines instead of rasterizing them into Detection masks "
+             "(default: rasterize to masks).",
+    )
 
     p.add_argument(
         "--config", "-c",
@@ -179,9 +185,6 @@ def main(argv=None):
             log.warning("--flatten is ignored in --fo mode")
         if args.format:
             log.warning("--format is ignored in --fo mode (use --to instead)")
-        if args.fraction is not None:
-            log.warning("--fraction is ignored in --fo mode "
-                        "(pre-filter your dataset view instead)")
 
         import fiftyone as fo
 
@@ -192,6 +195,7 @@ def main(argv=None):
             output_format=args.to,
             reimport=not args.no_reimport,
             dataset_name=args.name,
+            use_polylines=args.use_polylines,
         )
     else:
         # Disk mode

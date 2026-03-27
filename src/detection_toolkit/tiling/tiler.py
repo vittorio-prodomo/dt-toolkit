@@ -127,6 +127,7 @@ class DatasetTiler:
         label_field: Optional[str] = None,
         reimport: bool = True,
         dataset_name: Optional[str] = None,
+        use_polylines: bool = False,
     ) -> Optional[DatasetInfo]:
         """Tile a FiftyOne dataset and write to disk.
 
@@ -158,8 +159,21 @@ class DatasetTiler:
         resolved_field = resolve_label_field(dataset, label_field)
         container_type = detect_container_type(dataset, resolved_field)
 
-        # Build class mapping
-        class_map = build_class_map(dataset.classes)
+        # Build class mapping from dataset.classes; fall back to distinct labels
+        classes_dict = dataset.classes
+        if not classes_dict:
+            label_path = f"{resolved_field}.{container_type}.label"
+            distinct_labels = sorted(dataset.distinct(label_path))
+            if distinct_labels:
+                classes_dict = {resolved_field: distinct_labels}
+                dataset.classes = classes_dict
+                dataset.save()
+                logger.info(
+                    "dataset.classes is empty — inferred %d classes from '%s' "
+                    "and saved to dataset: %s",
+                    len(distinct_labels), label_path, distinct_labels,
+                )
+        class_map = build_class_map(classes_dict)
         class_list = list(class_map.keys())
         if not class_list:
             logger.warning("No classes found in dataset — tiling without annotations")
@@ -184,6 +198,17 @@ class DatasetTiler:
         all_labels = bulk_data[3]
         splits = bulk_data[4] if has_splits else ["train"] * len(filepaths)
 
+        # Apply fraction sampling if requested
+        if self.config.fraction is not None:
+            rng = random.Random(self.config.random_seed)
+            n = max(1, int(len(filepaths) * self.config.fraction))
+            indices = rng.sample(range(len(filepaths)), min(n, len(filepaths)))
+            filepaths  = [filepaths[i]  for i in indices]
+            widths     = [widths[i]     for i in indices]
+            heights    = [heights[i]    for i in indices]
+            all_labels = [all_labels[i] for i in indices]
+            splits     = [splits[i]     for i in indices]
+
         num_samples = len(filepaths)
         logger.info(
             "Tiling FiftyOne dataset '%s' (%d samples, tile_size=%d, format=%s)",
@@ -196,8 +221,10 @@ class DatasetTiler:
         # Convert annotations to plain-Python dicts per sample
         sample_annotations = []
         for i in range(num_samples):
+            raw = all_labels[i]
+            label_dict = {container_type: raw} if raw is not None else None
             anns = extract_annotations(
-                all_labels[i],
+                label_dict,
                 container_type=container_type,
                 class_map=class_map,
                 img_w=widths[i] or 0,
@@ -301,7 +328,7 @@ class DatasetTiler:
         result = None
         if reimport:
             result = self._reimport_fo(
-                output_path, output_format, dataset, dataset_name,
+                output_path, output_format, dataset, dataset_name, use_polylines,
             )
 
         return result
@@ -369,6 +396,7 @@ class DatasetTiler:
         output_format: str,
         source_dataset,
         dataset_name: Optional[str],
+        use_polylines: bool = False,
     ) -> Optional[DatasetInfo]:
         """Reimport tiled output into FiftyOne."""
         from ..fiftyone_hub.loader import FiftyOneDatasetLoader
@@ -389,6 +417,7 @@ class DatasetTiler:
             format=fmt,
             persistent=True,
             overwrite=True,
+            use_polylines=use_polylines,
         )
 
         # Load and return DatasetInfo

@@ -40,6 +40,8 @@ def densify_polygon(
     poly = Polygon(points)
     if not poly.is_valid:
         poly = poly.buffer(0)
+    if isinstance(poly, MultiPolygon):
+        poly = max(poly.geoms, key=lambda g: g.area)
     max_dist = poly.length * factor
 
     if max_dist <= 0:
