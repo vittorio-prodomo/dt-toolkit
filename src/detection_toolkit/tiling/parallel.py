@@ -7,7 +7,10 @@ that can be dispatched to a :class:`~concurrent.futures.ProcessPoolExecutor`.
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .config import TilingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,7 @@ def optimal_process_count(
 # Passthrough helpers (shared by all workers)
 # ------------------------------------------------------------------
 
-def _should_passthrough(img_w: int, img_h: int, cfg) -> bool:
+def _should_passthrough(img_w: int, img_h: int, cfg: "TilingConfig") -> bool:
     """Return True if the image should be passed through untiled.
 
     The effective threshold is ``max(skip_below or 0, tile_size)``.
@@ -438,8 +441,6 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
             has_anns = bool(annotations)
 
             if output_format == "yolo":
-                lbl_out = output_dir / "labels" / split_name
-                lbl_out.mkdir(parents=True, exist_ok=True)
                 out_lbl = lbl_out / f"{img_path.stem}.txt"
                 if has_anns:
                     _write_yolo_label(

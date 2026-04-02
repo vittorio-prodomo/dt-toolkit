@@ -26,7 +26,14 @@ from .geometry import (
     polygon_area_ratio,
     to_tile_coords,
 )
-from .parallel import optimal_process_count, tile_single_yolo_image, tile_single_image, tile_single_fo_sample
+from .parallel import (
+    optimal_process_count,
+    tile_single_yolo_image,
+    tile_single_image,
+    tile_single_fo_sample,
+    _should_passthrough,
+    _passthrough_image,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -672,7 +679,6 @@ class DatasetTiler:
                     continue
 
                 # Passthrough: small images are file-copied, not re-encoded
-                from .parallel import _should_passthrough, _passthrough_image
                 if _should_passthrough(img_w, img_h, self.config):
                     logger.debug(
                         "Passthrough (%dpx): %s (%dx%d)",

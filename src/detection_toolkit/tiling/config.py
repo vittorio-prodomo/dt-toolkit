@@ -43,6 +43,10 @@ class TilingConfig:
 
             COCO output natively supports multi-polygon segmentation, so
             this setting has no effect on COCO output.
+        skip_below: Passthrough threshold in pixels.  Images with
+            ``max(width, height) <= max(skip_below, tile_size)`` are
+            file-copied (no tiling, no re-encoding).  ``None`` means only
+            images at or below *tile_size* are passed through.
     """
 
     tile_size: int
