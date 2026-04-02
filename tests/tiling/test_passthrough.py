@@ -276,3 +276,55 @@ def test_fo_worker_passthrough_coco(tmp_path):
     assert entry["image"]["height"] == 150
     assert entry["image"]["file_name"] == "small.jpg"
     assert len(entry["annotations"]) == 1
+
+
+def test_coco_serial_passthrough(tmp_path):
+    """COCO serial path passes through small images."""
+    import json
+    import pyvips
+    from detection_toolkit.tiling import DatasetTiler
+
+    # Create a minimal COCO dataset with one small image
+    img_dir = tmp_path / "input" / "images" / "train"
+    img_dir.mkdir(parents=True)
+    ann_dir = tmp_path / "input" / "annotations"
+    ann_dir.mkdir(parents=True)
+
+    img = pyvips.Image.black(300, 200, bands=3)
+    img_path = img_dir / "small.jpg"
+    img.jpegsave(str(img_path), Q=90)
+    original_bytes = img_path.read_bytes()
+
+    coco = {
+        "images": [{"id": 1, "file_name": "small.jpg", "width": 300, "height": 200}],
+        "annotations": [
+            {
+                "id": 1, "image_id": 1, "category_id": 1,
+                "bbox": [10, 10, 50, 50], "area": 2500, "iscrowd": 0,
+            }
+        ],
+        "categories": [{"id": 1, "name": "crack", "supercategory": ""}],
+    }
+    (ann_dir / "instances_train.json").write_text(json.dumps(coco))
+
+    output = tmp_path / "output"
+
+    cfg = TilingConfig(tile_size=416)  # 300x200 < 416 -> passthrough
+    tiler = DatasetTiler(cfg, verbose=False)
+    from detection_toolkit.core.models import DatasetFormat
+    tiler.tile(tmp_path / "input", output, format=DatasetFormat.COCO)
+
+    # Check output image is bit-identical
+    out_img = output / "images" / "train" / "small.jpg"
+    assert out_img.exists()
+    assert out_img.read_bytes() == original_bytes
+
+    # Check output COCO JSON preserves the annotation
+    out_json = output / "annotations" / "instances_train.json"
+    out_coco = json.loads(out_json.read_text())
+    assert len(out_coco["images"]) == 1
+    assert out_coco["images"][0]["width"] == 300
+    assert out_coco["images"][0]["height"] == 200
+    assert out_coco["images"][0]["file_name"] == "small.jpg"
+    assert len(out_coco["annotations"]) == 1
+    assert out_coco["annotations"][0]["bbox"] == [10, 10, 50, 50]

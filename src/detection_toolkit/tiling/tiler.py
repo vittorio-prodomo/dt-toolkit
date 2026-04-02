@@ -229,6 +229,7 @@ class DatasetTiler:
                 class_map=class_map,
                 img_w=widths[i] or 0,
                 img_h=heights[i] or 0,
+                approx_factor=self.config.approx_factor,
             )
             sample_annotations.append(anns)
 
@@ -670,6 +671,39 @@ class DatasetTiler:
                 if src_file is None:
                     continue
 
+                # Passthrough: small images are file-copied, not re-encoded
+                from .parallel import _should_passthrough, _passthrough_image
+                if _should_passthrough(img_w, img_h, self.config):
+                    logger.debug(
+                        "Passthrough (%dpx): %s (%dx%d)",
+                        max(self.config.skip_below or 0, self.config.tile_size),
+                        src_file.name, img_w, img_h,
+                    )
+                    out_img = img_dir / src_file.name
+                    _passthrough_image(src_file, out_img)
+
+                    new_img_id = img_counter
+                    img_counter += 1
+                    new_images.append({
+                        "id": new_img_id,
+                        "file_name": src_file.name,
+                        "width": img_w,
+                        "height": img_h,
+                    })
+
+                    if img_anns:
+                        total_positive += 1
+                        for ann in img_anns:
+                            new_ann = dict(ann)
+                            new_ann["id"] = ann_counter
+                            ann_counter += 1
+                            new_ann["image_id"] = new_img_id
+                            new_annotations.append(new_ann)
+                    else:
+                        total_negative += 1
+
+                    continue
+
                 tiles = compute_tile_grid(
                     img_w, img_h, self.config.tile_size,
                     self.config.overlap_percent, self.config.edge_behavior,
@@ -689,9 +723,12 @@ class DatasetTiler:
 
                     # Write tile image
                     tile_img_path = img_dir / f"{tile_name}{tile_ext}"
-                    self._write_coco_tile_image(
+                    written = self._write_coco_tile_image(
                         img, tx, ty, tw, th, tile_img_path,
                     )
+                    if written is None:
+                        continue  # tile was skipped (invalid crop)
+                    actual_w, actual_h = written
 
                     # Add to output JSON
                     new_img_id = img_counter
@@ -700,8 +737,8 @@ class DatasetTiler:
                     new_images.append({
                         "id": new_img_id,
                         "file_name": f"{tile_name}{tile_ext}",
-                        "width": tw,
-                        "height": th,
+                        "width": actual_w,
+                        "height": actual_h,
                     })
 
                     if tile_anns:
@@ -913,10 +950,21 @@ class DatasetTiler:
         tw: int,
         th: int,
         out_path: Path,
-    ) -> None:
-        """Crop a tile from *img* and write it out."""
+    ) -> tuple[int, int] | None:
+        """Crop a tile from *img* and write it out.
+
+        Returns ``(written_width, written_height)`` of the saved tile,
+        or *None* if the tile was skipped (invalid crop region).
+        """
         read_w = min(tw, img.width - tx)
         read_h = min(th, img.height - ty)
+
+        if read_w <= 0 or read_h <= 0:
+            logger.warning(
+                "Skipping tile at (%d, %d) — crop region %dx%d on %dx%d image",
+                tx, ty, read_w, read_h, img.width, img.height,
+            )
+            return None
 
         tile = img.crop(tx, ty, read_w, read_h)
 
@@ -927,6 +975,8 @@ class DatasetTiler:
                 "north-west", tw, th,
                 extend="background", background=bg,
             )
+            # Padded tile is full tile_size
+            read_w, read_h = tw, th
 
         ext = out_path.suffix.lower()
         if ext in (".jpg", ".jpeg"):
@@ -935,6 +985,8 @@ class DatasetTiler:
             tile.pngsave(str(out_path))
         else:
             tile.write_to_file(str(out_path))
+
+        return read_w, read_h
 
     # ------------------------------------------------------------------
     # Negative sampling
