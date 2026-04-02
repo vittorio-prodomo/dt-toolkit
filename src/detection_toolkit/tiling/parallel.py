@@ -29,6 +29,35 @@ def optimal_process_count(
 
 
 # ------------------------------------------------------------------
+# Passthrough helpers (shared by all workers)
+# ------------------------------------------------------------------
+
+def _should_passthrough(img_w: int, img_h: int, cfg) -> bool:
+    """Return True if the image should be passed through untiled.
+
+    The effective threshold is ``max(skip_below or 0, tile_size)``.
+    Images at or below this threshold produce a single whole-image
+    "tile" anyway, so we skip the tiling pipeline entirely: no
+    re-encoding, no polygon clipping.
+
+    NOTE: when edge_behavior="padding", sub-tile_size images would
+    normally be padded to tile_size. The passthrough intentionally
+    skips this — padding a small image larger is not useful. If
+    uniform dimensions are needed, handle it downstream.
+    """
+    threshold = max(cfg.skip_below or 0, cfg.tile_size)
+    return max(img_w, img_h) <= threshold
+
+
+def _passthrough_image(src: "Path", dst: "Path") -> None:
+    """Copy an image file without decoding/re-encoding."""
+    import shutil
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+# ------------------------------------------------------------------
 # YOLO worker (top-level function, pickle-safe)
 # ------------------------------------------------------------------
 
