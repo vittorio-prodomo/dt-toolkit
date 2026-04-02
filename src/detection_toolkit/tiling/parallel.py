@@ -102,6 +102,27 @@ def tile_single_yolo_image(args: Tuple) -> Tuple[int, int]:
         img = pyvips.Image.new_from_file(str(img_path))
         img_w, img_h = img.width, img.height
 
+        # Passthrough: small images are file-copied, not re-encoded
+        if _should_passthrough(img_w, img_h, cfg):
+            logger.debug(
+                "Passthrough (%dpx): %s (%dx%d)",
+                max(cfg.skip_below or 0, cfg.tile_size),
+                img_path.name, img_w, img_h,
+            )
+            out_img = img_out / img_path.name
+            _passthrough_image(img_path, out_img)
+
+            out_lbl = lbl_out / f"{img_path.stem}.txt"
+            if label_path and label_path.exists():
+                import shutil
+                shutil.copy2(label_path, out_lbl)
+                has_anns = out_lbl.stat().st_size > 0
+            else:
+                out_lbl.write_text("")
+                has_anns = False
+
+            return (1, 0) if has_anns else (0, 1)
+
         # Parse annotations
         annotations = _parse_yolo_labels(label_path, img_w, img_h)
 

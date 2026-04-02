@@ -1,8 +1,5 @@
 """Tests for passthrough threshold logic."""
 
-import shutil
-from pathlib import Path
-
 from detection_toolkit.tiling.config import TilingConfig
 
 
@@ -70,3 +67,90 @@ def test_passthrough_image_copies_file(tmp_path):
 
     assert dst.exists()
     assert dst.read_bytes() == b"FAKE_JPEG_CONTENT_12345"
+
+
+def _create_yolo_fixture(tmp_path, img_w=200, img_h=150):
+    """Create a minimal YOLO image + label for testing.
+
+    Returns (img_path, label_path, output_path).
+    """
+    import pyvips
+
+    img = pyvips.Image.black(img_w, img_h, bands=3)
+    img_path = tmp_path / "images" / "train" / "small.jpg"
+    img_path.parent.mkdir(parents=True)
+    img.jpegsave(str(img_path), Q=90)
+
+    # YOLO label: one bbox annotation (class 0, centered, 50% of image)
+    label_path = tmp_path / "labels" / "train" / "small.txt"
+    label_path.parent.mkdir(parents=True)
+    label_path.write_text("0 0.5 0.5 0.5 0.5\n")
+
+    output_path = tmp_path / "output"
+    output_path.mkdir()
+    (output_path / "images" / "train").mkdir(parents=True)
+    (output_path / "labels" / "train").mkdir(parents=True)
+
+    return img_path, label_path, output_path
+
+
+def test_yolo_worker_passthrough_copies_image(tmp_path):
+    """YOLO worker passes through small images without re-encoding."""
+    from detection_toolkit.tiling.parallel import tile_single_yolo_image
+
+    img_path, label_path, output_path = _create_yolo_fixture(tmp_path, 200, 150)
+    original_bytes = img_path.read_bytes()
+
+    cfg = TilingConfig(tile_size=416)  # 200x150 < 416 -> passthrough
+    args = (
+        str(img_path),
+        str(label_path),
+        str(output_path),
+        "train",
+        3,  # pad_width
+        cfg.to_dict(),
+    )
+    pos, neg = tile_single_yolo_image(args)
+
+    assert pos == 1
+    assert neg == 0
+
+    # Image should be bit-identical copy (no re-encode)
+    out_img = output_path / "images" / "train" / "small.jpg"
+    assert out_img.exists()
+    assert out_img.read_bytes() == original_bytes
+
+    # Label should be bit-identical copy
+    out_lbl = output_path / "labels" / "train" / "small.txt"
+    assert out_lbl.exists()
+    assert out_lbl.read_text() == "0 0.5 0.5 0.5 0.5\n"
+
+
+def test_yolo_worker_passthrough_no_label(tmp_path):
+    """YOLO worker handles passthrough of images without label files."""
+    from detection_toolkit.tiling.parallel import tile_single_yolo_image
+
+    img_path, _, output_path = _create_yolo_fixture(tmp_path, 200, 150)
+
+    cfg = TilingConfig(tile_size=416)
+    args = (
+        str(img_path),
+        None,  # no label file
+        str(output_path),
+        "train",
+        3,
+        cfg.to_dict(),
+    )
+    pos, neg = tile_single_yolo_image(args)
+
+    assert pos == 0
+    assert neg == 1
+
+    # Image should exist
+    out_img = output_path / "images" / "train" / "small.jpg"
+    assert out_img.exists()
+
+    # Empty label for negative
+    out_lbl = output_path / "labels" / "train" / "small.txt"
+    assert out_lbl.exists()
+    assert out_lbl.read_text() == ""
