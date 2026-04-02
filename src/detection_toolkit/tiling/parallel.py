@@ -190,6 +190,18 @@ def tile_single_image(args: Tuple) -> int:
 
     try:
         img = pyvips.Image.new_from_file(str(img_path))
+
+        # Passthrough: small images are file-copied, not re-encoded
+        if _should_passthrough(img.width, img.height, cfg):
+            logger.debug(
+                "Passthrough (%dpx): %s (%dx%d)",
+                max(cfg.skip_below or 0, cfg.tile_size),
+                img_path.name, img.width, img.height,
+            )
+            out_path = output_dir / f"{tile_prefix}{img_path.suffix}"
+            _passthrough_image(img_path, out_path)
+            return 1
+
         tiles = compute_tile_grid(
             img.width, img.height, cfg.tile_size,
             cfg.overlap_percent, cfg.edge_behavior,

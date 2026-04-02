@@ -154,3 +154,33 @@ def test_yolo_worker_passthrough_no_label(tmp_path):
     out_lbl = output_path / "labels" / "train" / "small.txt"
     assert out_lbl.exists()
     assert out_lbl.read_text() == ""
+
+
+def test_unlabeled_worker_passthrough(tmp_path):
+    """Unlabeled worker passes through small images."""
+    from detection_toolkit.tiling.parallel import tile_single_image
+
+    import pyvips
+    img_path = tmp_path / "src" / "photo.jpg"
+    img_path.parent.mkdir()
+    img = pyvips.Image.black(300, 200, bands=3)
+    img.jpegsave(str(img_path), Q=90)
+    original_bytes = img_path.read_bytes()
+
+    output_dir = tmp_path / "dst"
+    output_dir.mkdir()
+
+    cfg = TilingConfig(tile_size=416)  # 300x200 < 416 -> passthrough
+    args = (
+        str(img_path),
+        str(output_dir),
+        "photo",   # tile_prefix
+        3,         # pad_width
+        cfg.to_dict(),
+    )
+    count = tile_single_image(args)
+
+    assert count == 1
+    out_img = output_dir / "photo.jpg"
+    assert out_img.exists()
+    assert out_img.read_bytes() == original_bytes
