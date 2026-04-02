@@ -52,3 +52,19 @@ def test_parse_fo_defaults():
     assert args.to == "yolo"
     assert args.name is None
     assert args.no_reimport is False
+
+
+def test_parse_skip_below():
+    """--skip-below sets skip_below attribute."""
+    from detection_toolkit.scripts.tile import parse_args
+
+    args = parse_args(["/data/dataset", "/tmp/out", "--skip-below", "640"])
+    assert args.skip_below == 640
+
+
+def test_parse_skip_below_default_is_none():
+    """--skip-below defaults to None."""
+    from detection_toolkit.scripts.tile import parse_args
+
+    args = parse_args(["/data/dataset", "/tmp/out"])
+    assert args.skip_below is None

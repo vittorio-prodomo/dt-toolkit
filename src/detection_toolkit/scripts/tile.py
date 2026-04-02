@@ -103,6 +103,11 @@ def parse_args(argv=None):
                         "'split' emits each sub-polygon as a separate instance. "
                         "Only affects YOLO output; COCO natively supports "
                         "multi-polygon annotations.")
+    p.add_argument("--approx-factor", type=float, default=0.0005, metavar="F",
+                   help="Contour approximation factor for mask-to-polygon "
+                        "conversion (default: 0.002). Smaller values produce "
+                        "smoother polygons with more vertices. Only affects "
+                        "FiftyOne datasets with dense masks.")
 
     # Negative sampling
     p.add_argument("--negative-ratio", "-n", type=float, default=0.1, metavar="F",
@@ -117,6 +122,12 @@ def parse_args(argv=None):
     # Image compression
     p.add_argument("--compression", "-Q", type=int, default=90, metavar="N",
                    help="JPEG quality 0-100 for saved tiles (default: 90).")
+
+    # Passthrough threshold
+    p.add_argument("--skip-below", type=int, default=None, metavar="PX",
+                   help="Images with max(width, height) <= PX are passed through "
+                        "untiled (file-copied, no re-encoding). Images smaller than "
+                        "tile-size are always passed through regardless of this setting.")
 
     # Parallelism
     p.add_argument("--max-processes", "-P", type=int, default=None, metavar="N",
@@ -173,6 +184,8 @@ def main(argv=None):
             fraction=args.fraction,
             flatten=args.flatten,
             disjoint_strategy=args.disjoint_strategy,
+            approx_factor=args.approx_factor,
+            skip_below=args.skip_below,
         )
 
     output_path = Path(args.output)
