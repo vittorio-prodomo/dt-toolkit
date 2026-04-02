@@ -60,6 +60,8 @@ class TilingConfig:
     fraction: Optional[float] = None
     flatten: bool = False
     disjoint_strategy: str = "bridge"
+    approx_factor: float = 0.0005
+    skip_below: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.tile_size <= 0:
@@ -95,6 +97,10 @@ class TilingConfig:
             raise ValueError(
                 f"disjoint_strategy must be 'bridge' or 'split', "
                 f"got {self.disjoint_strategy!r}"
+            )
+        if self.skip_below is not None and self.skip_below <= 0:
+            raise ValueError(
+                f"skip_below must be > 0, got {self.skip_below}"
             )
 
     def to_dict(self) -> Dict:
