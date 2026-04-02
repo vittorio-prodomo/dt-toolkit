@@ -184,3 +184,95 @@ def test_unlabeled_worker_passthrough(tmp_path):
     out_img = output_dir / "photo.jpg"
     assert out_img.exists()
     assert out_img.read_bytes() == original_bytes
+
+
+def test_fo_worker_passthrough_yolo(tmp_path):
+    """FiftyOne worker passes through small images in YOLO mode."""
+    from detection_toolkit.tiling.parallel import tile_single_fo_sample
+
+    import pyvips
+    img_path = tmp_path / "src" / "small.jpg"
+    img_path.parent.mkdir()
+    img = pyvips.Image.black(200, 150, bands=3)
+    img.jpegsave(str(img_path), Q=90)
+    original_bytes = img_path.read_bytes()
+
+    output_dir = tmp_path / "output"
+
+    # One polygon annotation: class 0, simple square
+    annotations = [{
+        "class_id": 0,
+        "type": "polygon",
+        "polygons": [[(10, 10), (50, 10), (50, 50), (10, 50)]],
+    }]
+
+    cfg = TilingConfig(tile_size=416)  # 200x150 < 416 -> passthrough
+    args = (
+        str(img_path),
+        annotations,
+        str(output_dir),
+        "train",
+        "small",     # tile_prefix
+        3,           # pad_width
+        ["defect"],  # class_list
+        cfg.to_dict(),
+        "yolo",      # output_format
+    )
+    pos, neg, coco_entries = tile_single_fo_sample(args)
+
+    assert pos == 1
+    assert neg == 0
+    assert coco_entries == []
+
+    # Image should be bit-identical
+    out_img = output_dir / "images" / "train" / "small.jpg"
+    assert out_img.exists()
+    assert out_img.read_bytes() == original_bytes
+
+    # Label file should exist with the annotation
+    out_lbl = output_dir / "labels" / "train" / "small.txt"
+    assert out_lbl.exists()
+    assert out_lbl.read_text().strip() != ""
+
+
+def test_fo_worker_passthrough_coco(tmp_path):
+    """FiftyOne worker passes through small images in COCO mode."""
+    from detection_toolkit.tiling.parallel import tile_single_fo_sample
+
+    import pyvips
+    img_path = tmp_path / "src" / "small.jpg"
+    img_path.parent.mkdir()
+    img = pyvips.Image.black(200, 150, bands=3)
+    img.jpegsave(str(img_path), Q=90)
+
+    output_dir = tmp_path / "output"
+
+    annotations = [{
+        "class_id": 0,
+        "type": "polygon",
+        "polygons": [[(10, 10), (50, 10), (50, 50), (10, 50)]],
+    }]
+
+    cfg = TilingConfig(tile_size=416)
+    args = (
+        str(img_path),
+        annotations,
+        str(output_dir),
+        "train",
+        "small",
+        3,
+        ["defect"],
+        cfg.to_dict(),
+        "coco",
+    )
+    pos, neg, coco_entries = tile_single_fo_sample(args)
+
+    assert pos == 1
+    assert neg == 0
+    assert len(coco_entries) == 1
+
+    entry = coco_entries[0]
+    assert entry["image"]["width"] == 200
+    assert entry["image"]["height"] == 150
+    assert entry["image"]["file_name"] == "small.jpg"
+    assert len(entry["annotations"]) == 1

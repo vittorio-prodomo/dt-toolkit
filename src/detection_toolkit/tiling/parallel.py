@@ -425,6 +425,55 @@ def tile_single_fo_sample(args: Tuple) -> Tuple[int, int, List[Dict]]:
         img = pyvips.Image.new_from_file(str(img_path))
         img_w, img_h = img.width, img.height
 
+        # Passthrough: small images are file-copied, not re-encoded
+        if _should_passthrough(img_w, img_h, cfg):
+            logger.debug(
+                "Passthrough (%dpx): %s (%dx%d)",
+                max(cfg.skip_below or 0, cfg.tile_size),
+                img_path.name, img_w, img_h,
+            )
+            out_img = img_out / img_path.name
+            _passthrough_image(img_path, out_img)
+
+            has_anns = bool(annotations)
+
+            if output_format == "yolo":
+                lbl_out = output_dir / "labels" / split_name
+                lbl_out.mkdir(parents=True, exist_ok=True)
+                out_lbl = lbl_out / f"{img_path.stem}.txt"
+                if has_anns:
+                    _write_yolo_label(
+                        out_lbl, annotations, img_w, img_h,
+                        disjoint_strategy=cfg.disjoint_strategy,
+                    )
+                else:
+                    out_lbl.write_text("")
+
+            elif output_format == "coco":
+                image_entry = {
+                    "file_name": img_path.name,
+                    "width": img_w,
+                    "height": img_h,
+                }
+                if has_anns:
+                    ann_entries = _to_coco_annotations(
+                        annotations, img_w, img_h, class_list,
+                    )
+                    coco_entries.append({
+                        "image": image_entry,
+                        "annotations": ann_entries,
+                    })
+                else:
+                    coco_entries.append({
+                        "image": image_entry,
+                        "annotations": [],
+                    })
+
+            if has_anns:
+                return (1, 0, coco_entries)
+            else:
+                return (0, 1, coco_entries)
+
         tiles = compute_tile_grid(
             img_w, img_h, cfg.tile_size,
             cfg.overlap_percent, cfg.edge_behavior,
