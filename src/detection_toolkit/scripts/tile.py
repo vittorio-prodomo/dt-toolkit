@@ -105,7 +105,7 @@ def parse_args(argv=None):
                         "multi-polygon annotations.")
     p.add_argument("--approx-factor", type=float, default=0.0005, metavar="F",
                    help="Contour approximation factor for mask-to-polygon "
-                        "conversion (default: 0.002). Smaller values produce "
+                        "conversion (default: 0.0005). Smaller values produce "
                         "smoother polygons with more vertices. Only affects "
                         "FiftyOne datasets with dense masks.")
 
