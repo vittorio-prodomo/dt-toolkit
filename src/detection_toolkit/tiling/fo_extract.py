@@ -37,6 +37,7 @@ def extract_annotations(
     class_map: Dict[str, int],
     img_w: int,
     img_h: int,
+    approx_factor: float = 0.0005,
 ) -> List[Dict]:
     """Convert one sample's FiftyOne labels to plain-Python annotation dicts.
 
@@ -87,7 +88,7 @@ def extract_annotations(
                 from cocoyolo.geometry import mask_to_polygons
                 import numpy as np
                 mask_h, mask_w = mask.shape
-                raw_polys = mask_to_polygons(mask.astype(np.uint8))
+                raw_polys = mask_to_polygons(mask.astype(np.uint8), approx_factor=approx_factor)
                 if raw_polys:
                     abs_polygons = [
                         [
