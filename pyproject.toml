@@ -91,9 +91,9 @@ Issues = "https://github.com/vittorio-prodomo/detection-toolkit/issues"
 
 [tool.uv.sources]
 cocoyolo = { path = "../cocoyolo", editable = true }
-fiftyone = { path = "../../../globally_useful_repos/fiftyone", editable = true }
-voxel51-eta = { path = "../../../globally_useful_repos/fiftyone/eta", editable = true }
-fiftyone-brain = { path = "../../../globally_useful_repos/fiftyone-brain", editable = true }
+fiftyone = { path = "../fiftyone-fork", editable = true }
+voxel51-eta = { path = "../fiftyone-fork/eta", editable = true }
+fiftyone-brain = { path = "../fiftyone-brain-fork" }
 
 [tool.uv]
 override-dependencies = [
