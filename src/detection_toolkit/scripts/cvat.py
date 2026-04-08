@@ -20,6 +20,9 @@ def _add_connection_opts(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("CVAT connection (or set DT_CVAT_* in .env)")
     g.add_argument("--url", type=str, default=None, metavar="URL",
                    help="CVAT server URL (default: DT_CVAT_URL).")
+    g.add_argument("--token", type=str, default=None, metavar="TOKEN",
+                   help="CVAT Personal Access Token (default: DT_CVAT_TOKEN). "
+                        "Preferred over --username/--password.")
     g.add_argument("--username", "-u", type=str, default=None, metavar="USER",
                    help="CVAT username (default: DT_CVAT_USERNAME).")
     g.add_argument("--password", type=str, default=None, metavar="PASS",
@@ -127,6 +130,7 @@ def main(argv=None):
 
         client = CvatClient(
             url=args.url,
+            token=args.token,
             username=args.username,
             password=args.password,
             organization=args.organization,
