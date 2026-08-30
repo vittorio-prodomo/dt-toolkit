@@ -1,12 +1,18 @@
 """Geometry operations for polygon processing during tiling.
 
-Provides densification, smoothing, and tile-clipping of polygons
-using Shapely for robust computational geometry.
+Provides densification, tile-clipping and topology-preserving simplification of
+polygons using Shapely.
+
+TOPOLOGY CONTRACT: an annotation may be multi-part and may contain holes.
+Disjoint parts are returned as SEPARATE rings (COCO unions a list of rings);
+holes are bridged into their part's exterior with a zero-width seam, because the
+polygon format cannot subtract. Never discard a part, never drop an interior.
 """
 
 import logging
 from typing import List, Optional, Sequence, Tuple, Union
 
+import numpy as np
 from shapely.geometry import MultiPolygon, Polygon, box
 
 logger = logging.getLogger(__name__)
@@ -37,17 +43,25 @@ def densify_polygon(
     if len(points) < 3 or factor <= 0:
         return points
 
-    poly = Polygon(points)
-    if not poly.is_valid:
-        poly = poly.buffer(0)
-    if isinstance(poly, MultiPolygon):
-        poly = max(poly.geoms, key=lambda g: g.area)
-    max_dist = poly.length * factor
+    # Resample the ring AS GIVEN. This used to route through Shapely, which meant
+    # `max(geoms, key=area)` on a bridged ring (dropping every part but the
+    # largest) and `exterior.coords` (dropping holes) -- the same two bugs as
+    # downstream, but firing FIRST, before anything could recover them.
+    # Densification is pure resampling: it needs a perimeter, not a validity
+    # opinion, so compute the perimeter from the points themselves.
+    ring = list(points)
+    if ring[0] != ring[-1]:
+        ring.append(ring[0])
 
+    perimeter = 0.0
+    for (x0, y0), (x1, y1) in zip(ring, ring[1:]):
+        perimeter += ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+
+    max_dist = perimeter * factor
     if max_dist <= 0:
         return points
 
-    return _densify_ring(list(poly.exterior.coords), max_dist)
+    return _densify_ring(ring, max_dist)
 
 
 def _densify_ring(
@@ -78,33 +92,6 @@ def _densify_ring(
 # Polygon smoothing
 # ------------------------------------------------------------------
 
-def smooth_polygon(
-    points: PointList, tolerance: float = 0.1
-) -> PointList:
-    """Simplify a polygon using Shapely's topology-preserving algorithm.
-
-    Args:
-        points: Polygon vertices as ``[(x, y), ...]``.
-        tolerance: Simplification tolerance in the same units as coordinates.
-
-    Returns:
-        Simplified polygon vertices.
-    """
-    if len(points) < 3 or tolerance <= 0:
-        return points
-
-    poly = Polygon(points)
-    if not poly.is_valid:
-        poly = poly.buffer(0)
-    simplified = poly.simplify(tolerance, preserve_topology=True)
-
-    if simplified.is_empty or not isinstance(simplified, Polygon):
-        return points
-
-    coords = list(simplified.exterior.coords)
-    if len(coords) < 4:  # degenerate after simplification
-        return points
-    return coords
 
 
 # ------------------------------------------------------------------
@@ -137,11 +124,11 @@ def clip_polygon_to_tile(
     if len(points) < 3:
         return None
 
-    # Optional preprocessing
+    # Order matters: densify -> un-bridge -> clip -> simplify -> bridge holes.
+    # Simplification used to run FIRST, on the raw ring, where it both dropped
+    # holes and risked prying a zero-width seam open into a filled wedge.
     if densify_factor > 0:
         points = densify_polygon(points, densify_factor)
-    if smoothing_tolerance > 0:
-        points = smooth_polygon(points, smoothing_tolerance)
 
     poly = _make_valid_polygon(points)
     if poly is None:
@@ -153,6 +140,10 @@ def clip_polygon_to_tile(
         return None
 
     intersection = poly.intersection(tile_box)
+    if intersection.is_empty:
+        return None
+
+    intersection = _simplify_geometry(intersection, smoothing_tolerance)
     if intersection.is_empty:
         return None
 
@@ -353,8 +344,21 @@ def bbox_area_ratio(
 
 def _make_valid_polygon(
     points: PointList,
-) -> Optional[Polygon]:
-    """Create a valid Shapely Polygon, returning None on failure."""
+) -> Optional[Union[Polygon, MultiPolygon]]:
+    """Create a valid Shapely geometry from a ring, returning None on failure.
+
+    ``buffer(0)`` is what UN-BRIDGES an incoming ring: annotations reach us as a
+    single self-touching ring (``cocoyolo.mask_to_polygons`` bridges disjoint
+    parts and holes through zero-width seams, because YOLO-seg holds only one
+    ring per instance), which Shapely correctly reports as invalid and correctly
+    resolves back into its true parts.
+
+    The result may therefore legitimately be a MultiPolygon, and every part is
+    real annotation. This function used to keep only ``max(geoms, key=area)``,
+    silently deleting every other part -- measured as exactly 50% pixel loss on a
+    two-stroke crack. Return the whole geometry; the caller decides how to encode
+    it.
+    """
     if len(points) < 3:
         return None
     try:
@@ -363,35 +367,83 @@ def _make_valid_polygon(
             poly = poly.buffer(0)
         if poly.is_empty:
             return None
-        if isinstance(poly, MultiPolygon):
-            poly = max(poly.geoms, key=lambda g: g.area)
         return poly
     except Exception:
         return None
 
 
+def _simplify_geometry(
+    geom: Union[Polygon, MultiPolygon], tolerance: float,
+) -> Union[Polygon, MultiPolygon]:
+    """Topology-preserving simplification of a whole geometry.
+
+    Runs AFTER clipping and BEFORE any hole bridging. Simplifying a bridged ring
+    is unsafe: the two coincident edges of a zero-width seam can be perturbed
+    apart, turning an invisible seam into a filled wedge.
+    """
+    if tolerance <= 0:
+        return geom
+    try:
+        simplified = geom.simplify(tolerance, preserve_topology=True)
+    except Exception:
+        return geom
+    if simplified.is_empty or not isinstance(simplified, (Polygon, MultiPolygon)):
+        return geom
+    return simplified
+
+
+def _ring_with_holes_bridged(poly: Polygon) -> Optional[PointList]:
+    """One COCO-ready ring for a single polygon part, holes bridged in.
+
+    COCO's ``segmentation`` is a list of rings that decoders UNION, so a hole
+    cannot be a separate entry -- it would add area instead of removing it
+    (verified: ``[outer, hole]`` decodes to the same pixel count as ``[outer]``).
+    A hole survives only as a zero-width detour spliced into its exterior, which
+    is what ``cocoyolo.bridge_holes`` builds.
+    """
+    exterior = list(poly.exterior.coords)[:-1]          # drop the closing repeat
+    if len(exterior) < 3:
+        return None
+    if not poly.interiors:
+        return list(poly.exterior.coords)
+    holes = [
+        np.asarray(list(ring.coords)[:-1], dtype=float)
+        for ring in poly.interiors
+        if len(ring.coords) >= 4
+    ]
+    if not holes:
+        return list(poly.exterior.coords)
+    from cocoyolo.geometry import bridge_holes
+
+    return bridge_holes([list(p) for p in exterior], holes)
+
+
 def _extract_polygons(
     geom: Union[Polygon, MultiPolygon],
-) -> List[PointList]:
-    """Extract coordinate lists from a Shapely geometry result."""
-    polygons: List[PointList] = []
+) -> Optional[List[PointList]]:
+    """Coordinate lists from a Shapely result, ONE per disjoint part.
 
+    Disjoint parts stay separate -- COCO unions a list of rings, so parts need no
+    bridging here and must not get one (a premature bridge adds a ~1px seam that
+    the format did not require). Holes, which the format cannot express, are
+    bridged into their own part's exterior.
+
+    This function used to return bare ``exterior.coords``, discarding interiors
+    and so returning a ring-shaped annotation FILLED -- measured 3.4x inflation.
+    """
     if isinstance(geom, Polygon):
-        coords = list(geom.exterior.coords)
-        if len(coords) >= 4:
-            polygons.append(coords)
-    elif isinstance(geom, MultiPolygon):
-        for g in geom.geoms:
-            coords = list(g.exterior.coords)
-            if len(coords) >= 4:
-                polygons.append(coords)
+        parts = [geom]
+    elif hasattr(geom, "geoms"):
+        parts = [g for g in geom.geoms if isinstance(g, Polygon)]
     else:
-        # GeometryCollection or other — try to extract polygons
-        if hasattr(geom, "geoms"):
-            for g in geom.geoms:
-                if isinstance(g, Polygon):
-                    coords = list(g.exterior.coords)
-                    if len(coords) >= 4:
-                        polygons.append(coords)
+        parts = []
+
+    polygons: List[PointList] = []
+    for part in parts:
+        if part.is_empty:
+            continue
+        ring = _ring_with_holes_bridged(part)
+        if ring and len(ring) >= 4:
+            polygons.append(ring)
 
     return polygons if polygons else None
