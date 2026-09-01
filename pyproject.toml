@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Modular building blocks for object-detection & instance-segmentation workflows."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Vittorio Prodomo" },
 ]
@@ -42,6 +42,7 @@ dependencies = [
     "pyvips>=2.2",
     "shapely>=2.0",
     "tqdm",
+    "cvat-sdk==2.74.0",
 ]
 
 [project.optional-dependencies]
