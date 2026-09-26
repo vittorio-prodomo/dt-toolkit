@@ -6,6 +6,9 @@ Usage::
     dt-thumbnails my_dataset
     dt-thumbnails my_dataset --size 512
     dt-thumbnails my_dataset --output-dir /path/to/thumbs
+    dt-thumbnails my_dataset --check        # read-only health audit
+
+Re-running is cheap: only missing or out-of-date thumbnails are written.
 """
 
 import logging
@@ -25,6 +28,19 @@ def parse_args(argv=None):
         "--output-dir", "-o", default=None,
         help="Directory where the .{name}_thumbnails/ folder is created "
              "(default: parent of the dataset's common filepath ancestor).",
+    )
+    p.add_argument(
+        "--force", action="store_true",
+        help="Regenerate every thumbnail, even up-to-date ones.",
+    )
+    p.add_argument(
+        "--num-workers", "-j", type=int, default=None,
+        help="Worker processes (default: half the CPUs, max 16).",
+    )
+    p.add_argument(
+        "--check", action="store_true",
+        help="Only audit the existing thumbnails (unset / relative / missing / "
+             "shared by different images); writes nothing, exit 1 if unhealthy.",
     )
 
     g = p.add_mutually_exclusive_group()
@@ -59,11 +75,25 @@ def main(argv=None):
             print(f"Available datasets: {existing}", file=sys.stderr)
         sys.exit(1)
 
-    from detection_toolkit.fiftyone_hub.utils import create_thumbnails
+    from detection_toolkit.fiftyone_hub.thumbnails import (
+        FIELD, audit_thumbnails, create_thumbnails,
+    )
 
-    create_thumbnails(dataset, output_dir=args.output_dir, size=args.size)
+    if args.check:
+        thumbs = (dataset.values(FIELD) if dataset.has_sample_field(FIELD)
+                  else [None] * len(dataset))
+        report = audit_thumbnails(dataset.values("filepath"), thumbs)
+        report["grid_media_field"] = dataset.app_config.grid_media_field
+        for key, value in report.items():
+            print(f"{key:28s} {value}")
+        sys.exit(0 if report["ok"] else 1)
+
+    summary = create_thumbnails(dataset, output_dir=args.output_dir, size=args.size,
+                                force=args.force, num_workers=args.num_workers)
     print(f"Thumbnails ready for '{args.dataset}' ({len(dataset)} samples, "
-          f"size={args.size}px)")
+          f"size={args.size}px): {summary['generated']} written, "
+          f"{summary['reused']} up to date, {summary['failed']} failed "
+          f"-> {summary['root']}")
 
 
 if __name__ == "__main__":
