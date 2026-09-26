@@ -38,7 +38,8 @@ def thumbnails_root(
     ``rel_root`` is the deepest folder containing every sample; thumbnails
     mirror the tree below it. The thumbnails folder is created inside
     ``output_dir`` when given, else beside ``rel_root`` (a sibling, so globs
-    over the dataset folder never pick thumbnails up).
+    over the dataset folder never pick thumbnails up) — moved further up when
+    that would sit inside a DVC-tracked folder (``<dir>.dvc`` beside it).
     """
     rel_root = Path(os.path.commonpath([os.path.dirname(os.path.abspath(f))
                                         for f in filepaths]))
@@ -48,6 +49,9 @@ def thumbnails_root(
                 f"the samples' common folder is {rel_root}; pass output_dir "
                 "explicitly rather than writing thumbnails next to it")
         parent = rel_root.parent
+        for folder in [parent, *parent.parents]:
+            if (folder.parent / f"{folder.name}.dvc").exists():
+                parent = folder.parent
     else:
         parent = Path(output_dir).resolve()
     return parent / f".{dataset_name}_thumbnails", rel_root
