@@ -37,9 +37,20 @@ def test_plan_mirrors_the_tree_so_equal_basenames_never_collide(tmp_path):
            str(root / "VID_2" / "nx" / "nx_000000.png")]
     thumbs = tmp_path / ".ds_thumbnails"
     out = plan_thumbnail_paths(fps, thumbs, root)
-    assert out == [str(thumbs / "VID_1" / "nx" / "nx_000000.png"),
-                   str(thumbs / "VID_2" / "nx" / "nx_000000.png")]
+    assert out == [str(thumbs / "VID_1" / "nx" / "nx_000000.png.webp"),
+                   str(thumbs / "VID_2" / "nx" / "nx_000000.png.webp")]
     assert len(set(out)) == 2
+
+
+def test_plan_appends_the_format_so_same_stem_files_stay_apart(tmp_path):
+    root = tmp_path / "data"
+    fps = [str(root / "a" / "f_001.png"), str(root / "a" / "f_001.jpg")]
+    out = plan_thumbnail_paths(fps, tmp_path / ".t", root, fmt="webp")
+    assert [Path(p).name for p in out] == ["f_001.png.webp", "f_001.jpg.webp"]
+    assert plan_thumbnail_paths(fps, tmp_path / ".t", root, fmt="keep") == [
+        str(tmp_path / ".t" / "a" / "f_001.png"), str(tmp_path / ".t" / "a" / "f_001.jpg")]
+    with pytest.raises(ValueError, match="format"):
+        plan_thumbnail_paths(fps, tmp_path / ".t", root, fmt="gif")
 
 
 def test_plan_refuses_a_file_outside_the_root(tmp_path):
@@ -171,6 +182,37 @@ def test_a_size_change_regenerates_everything(tmp_path, fo_dataset):
     summary = create_thumbnails(fo_dataset, size=64)
     assert summary["generated"] == 1
     assert Image.open(fo_dataset.first().thumbnail_path).size[1] == 64
+
+
+@pytest.mark.requires_mongod
+def test_default_output_is_webp_and_a_format_change_regenerates(tmp_path, fo_dataset):
+    import fiftyone as fo
+    from detection_toolkit.fiftyone_hub.utils import create_thumbnails
+
+    src = _img(tmp_path / "d" / "x" / "1.png", (0, 200, 0), (400, 300))
+    fo_dataset.add_sample(fo.Sample(filepath=src))
+    create_thumbnails(fo_dataset, size=32)
+    thumb = fo_dataset.first().thumbnail_path
+    assert thumb.endswith("1.png.webp") and Image.open(thumb).format == "WEBP"
+
+    summary = create_thumbnails(fo_dataset, size=32, fmt="jpg")
+    assert summary["generated"] == 1
+    assert Image.open(fo_dataset.first().thumbnail_path).format == "JPEG"
+
+
+@pytest.mark.requires_mongod
+def test_a_palette_or_alpha_image_still_becomes_a_webp(tmp_path, fo_dataset):
+    import fiftyone as fo
+    from detection_toolkit.fiftyone_hub.utils import create_thumbnails
+
+    pal = tmp_path / "d" / "p" / "1.png"
+    pal.parent.mkdir(parents=True)
+    Image.new("RGB", (300, 200), "red").convert("P").save(pal)
+    rgba = tmp_path / "d" / "q" / "1.png"
+    rgba.parent.mkdir(parents=True)
+    Image.new("RGBA", (300, 200), (0, 0, 255, 128)).save(rgba)
+    fo_dataset.add_samples([fo.Sample(filepath=str(pal)), fo.Sample(filepath=str(rgba))])
+    assert create_thumbnails(fo_dataset, size=32)["failed"] == 0
 
 
 @pytest.mark.requires_mongod
