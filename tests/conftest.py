@@ -6,13 +6,12 @@ import pytest
 def _mongod_available() -> bool:
     """Return True if a local MongoDB instance is reachable."""
     try:
+        import os
+
         import pymongo
 
-        client = pymongo.MongoClient(
-            "localhost",
-            27017,
-            serverSelectionTimeoutMS=500,
-        )
+        uri = os.environ.get("FIFTYONE_DATABASE_URI", "mongodb://localhost:27017")
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=500)
         client.server_info()
         return True
     except Exception:
