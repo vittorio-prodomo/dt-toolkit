@@ -109,7 +109,10 @@ def main(argv=None):
 
     if args.points:
         # Pre-reduced coordinates — use method='manual'
-        points = np.array(dataset.values(args.points))
+        raw = dataset.values(args.points)
+        # Replace None entries with NaN so numpy can build a homogeneous array
+        ndims = args.num_dims
+        points = np.array([v if v is not None else [np.nan] * ndims for v in raw])
         fob.compute_visualization(
             dataset,
             points=points,
