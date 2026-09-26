@@ -30,6 +30,11 @@ def parse_args(argv=None):
              "(default: parent of the dataset's common filepath ancestor).",
     )
     p.add_argument(
+        "--format", "-f", dest="fmt", choices=("webp", "jpg", "keep"), default="webp",
+        help="Thumbnail format (default: webp; 'keep' = the source's own format). "
+             "The extension is appended: f.png -> f.png.webp.",
+    )
+    p.add_argument(
         "--force", action="store_true",
         help="Regenerate every thumbnail, even up-to-date ones.",
     )
@@ -89,9 +94,10 @@ def main(argv=None):
         sys.exit(0 if report["ok"] else 1)
 
     summary = create_thumbnails(dataset, output_dir=args.output_dir, size=args.size,
-                                force=args.force, num_workers=args.num_workers)
+                                force=args.force, num_workers=args.num_workers,
+                                fmt=args.fmt)
     print(f"Thumbnails ready for '{args.dataset}' ({len(dataset)} samples, "
-          f"size={args.size}px): {summary['generated']} written, "
+          f"size={args.size}px, {args.fmt}): {summary['generated']} written, "
           f"{summary['reused']} up to date, {summary['failed']} failed "
           f"-> {summary['root']}")
 

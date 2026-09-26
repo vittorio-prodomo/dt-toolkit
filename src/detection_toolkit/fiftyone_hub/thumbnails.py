@@ -14,6 +14,7 @@ audit) import cheaply.
 import hashlib
 import logging
 import os
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 FIELD = "thumbnail_path"
 INFO_KEY = "thumbnails"
+FORMATS = ("webp", "jpg", "keep")
 _INLINE_BELOW = 32          # fewer images than this: skip the thread pool
 
 
@@ -52,16 +54,27 @@ def thumbnails_root(
 
 
 def plan_thumbnail_paths(
-    filepaths: Sequence[str], thumbnails_dir: Union[str, Path], rel_root: Union[str, Path]
+    filepaths: Sequence[str],
+    thumbnails_dir: Union[str, Path],
+    rel_root: Union[str, Path],
+    fmt: str = "webp",
 ) -> List[str]:
-    """One thumbnail path per filepath, mirroring the tree below ``rel_root``."""
+    """One thumbnail path per filepath, mirroring the tree below ``rel_root``.
+
+    The format's extension is APPENDED (``f.png`` -> ``f.png.webp``), never
+    substituted: ``f.png`` and ``f.jpg`` in one folder must not both become
+    ``f.webp``. ``fmt="keep"`` writes the source's own format.
+    """
+    if fmt not in FORMATS:
+        raise ValueError(f"unknown thumbnail format {fmt!r}; choose from {FORMATS}")
+    suffix = "" if fmt == "keep" else f".{fmt}"
     rel_root = os.path.abspath(rel_root)
     out = []
     for fp in filepaths:
         rel = os.path.relpath(os.path.abspath(fp), rel_root)
         if rel.startswith(os.pardir):
             raise ValueError(f"{fp} is outside the thumbnail root {rel_root}")
-        out.append(str(Path(thumbnails_dir) / rel))
+        out.append(str(Path(thumbnails_dir) / rel) + suffix)
     return out
 
 
@@ -91,9 +104,17 @@ def make_thumbnail(src: str, dst: str, size: int) -> bool:
             ext = os.path.splitext(dst)[1].lower()
             if ext in (".jpg", ".jpeg") and im.mode not in ("RGB", "L"):
                 im = im.convert("RGB")
+            elif ext == ".webp" and im.mode not in ("RGB", "RGBA"):
+                alpha = "A" in im.getbands() or "transparency" in im.info
+                im = im.convert("RGBA" if alpha else "RGB")
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            tmp = f"{dst}.tmp{os.getpid()}{ext}"
-            im.save(tmp, quality=85) if ext in (".jpg", ".jpeg") else im.save(tmp)
+            tmp = f"{dst}.tmp{threading.get_ident()}{ext}"
+            if ext in (".jpg", ".jpeg"):
+                im.save(tmp, quality=85)
+            elif ext == ".webp":
+                im.save(tmp, quality=80, method=4)
+            else:
+                im.save(tmp)
         os.replace(tmp, dst)
         return True
     except Exception as err:            # one bad file must not sink the run
@@ -168,6 +189,7 @@ def create_thumbnails(
     size: int = 256,
     force: bool = False,
     num_workers: Optional[int] = None,
+    fmt: str = "webp",
 ) -> Dict:
     """Create/refresh grid thumbnails and wire them into the App.
 
@@ -175,7 +197,9 @@ def create_thumbnails(
     different ``size`` from the last run regenerates all of them. Every sample
     gets an ABSOLUTE ``thumbnail_path``; an image that cannot be read falls
     back to its own filepath so the grid still shows it. Existing
-    ``app_config.media_fields`` entries are kept.
+    ``app_config.media_fields`` entries are kept. ``fmt`` is ``"webp"``
+    (default, ~20-30x smaller than PNG thumbnails), ``"jpg"`` or ``"keep"``;
+    changing it regenerates everything.
 
     Returns ``{"generated", "reused", "failed", "root"}``.
     """
@@ -191,9 +215,11 @@ def create_thumbnails(
         thumbs_dir, rel_root = Path(previous["root"]), Path(previous["rel_root"])
     else:
         thumbs_dir, rel_root = thumbnails_root(filepaths, dataset.name, output_dir)
-    planned = plan_thumbnail_paths(filepaths, thumbs_dir, rel_root)
+    planned = plan_thumbnail_paths(filepaths, thumbs_dir, rel_root, fmt=fmt)
 
-    if previous.get("size") not in (None, size) or previous.get("root") not in (None, str(thumbs_dir)):
+    if (previous.get("size") not in (None, size)
+            or previous.get("root") not in (None, str(thumbs_dir))
+            or previous.get("format", "keep") != fmt):
         force = True
 
     unique = dict(zip(filepaths, planned))
@@ -214,7 +240,8 @@ def create_thumbnails(
     dataset.app_config.media_fields = media
     dataset.app_config.grid_media_field = FIELD
     info = dict(dataset.info or {})
-    info[INFO_KEY] = {"root": str(thumbs_dir), "rel_root": str(rel_root), "size": size}
+    info[INFO_KEY] = {"root": str(thumbs_dir), "rel_root": str(rel_root), "size": size,
+                      "format": fmt}
     dataset.info = info
     dataset.save()
 
