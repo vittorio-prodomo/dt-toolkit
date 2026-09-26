@@ -67,6 +67,18 @@ def test_default_root_is_a_hidden_sibling_of_the_common_ancestor(tmp_path):
     assert thumbs.is_absolute()
 
 
+def test_default_root_never_lands_inside_a_dvc_tracked_folder(tmp_path):
+    # datasets/my_dataset_v1 is tracked by datasets/my_dataset_v1.dvc: thumbnails
+    # written inside it would make `dvc status` report the dataset modified
+    (tmp_path / "datasets").mkdir()
+    (tmp_path / "datasets" / "my_dataset_v1.dvc").write_text("outs: []\n")
+    fps = [str(tmp_path / "datasets" / "my_dataset_v1" / "images" / "a" / "1.jpg"),
+           str(tmp_path / "datasets" / "my_dataset_v1" / "images" / "b" / "2.jpg")]
+    thumbs, rel = thumbnails_root(fps, "my-dataset")
+    assert thumbs == tmp_path / "datasets" / ".my-dataset_thumbnails"
+    assert rel == tmp_path / "datasets" / "my_dataset_v1" / "images"
+
+
 def test_explicit_output_dir_is_made_absolute(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     fps = [str(tmp_path / "data" / "a" / "1.jpg")]
