@@ -7,7 +7,11 @@ Usage::
     dt-embed my_dataset --backend huggingface --model facebook/dinov3-vits16-pretrain-lvd1689m --output-field dinov3_emb
     dt-embed my_dataset --backend api --model Qwen/Qwen3-VL-Embedding-8B --output-field qwen_emb --api-url http://localhost:8001/v1
 
-    # several GPUs: the dataset is split across them, same vectors as one GPU
+    # several GPUs: the dataset is split across them, same vectors as one GPU.
+    # Only faster when the MODEL is the bottleneck (a very large model); with
+    # DINOv3 ViT-S/B, image decoding on the CPU limits throughput and 2 GPUs
+    # measured SLOWER than 1 (x0.76 on 4K JPEGs, x0.40 on 1080p frames,
+    # 2026-09-26) because each GPU worker adds ~10 s of start-up.
     dt-embed my_dataset --backend huggingface --model facebook/dinov3-vits16-pretrain-lvd1689m --output-field dinov3_emb --gpu 0,1
 """
 
@@ -47,7 +51,9 @@ def parse_args(argv=None):
     p.add_argument("--gpu", default=None, metavar="IDS",
                    help="GPU device ID(s): one (e.g. 0) sets CUDA_VISIBLE_DEVICES; "
                         "several (e.g. 0,1) split the dataset across them "
-                        "(zoo/huggingface backends only).")
+                        "(zoo/huggingface backends only). Several GPUs only pay off "
+                        "when the model, not image decoding, is the bottleneck: "
+                        "with DINOv3 ViT-S/B they measured slower than one.")
     _add_verbosity(p)
     return p.parse_args(argv)
 
