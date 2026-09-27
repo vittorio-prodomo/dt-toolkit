@@ -6,6 +6,13 @@ Usage::
     dt-embed my_dataset --backend zoo --model dinov2-vitb14-torch --output-field dinov2_emb
     dt-embed my_dataset --backend huggingface --model facebook/dinov3-vits16-pretrain-lvd1689m --output-field dinov3_emb
     dt-embed my_dataset --backend api --model Qwen/Qwen3-VL-Embedding-8B --output-field qwen_emb --api-url http://localhost:8001/v1
+
+    # several GPUs: the dataset is split across them, same vectors as one GPU.
+    # Only faster when the MODEL is the bottleneck (a very large model); with
+    # DINOv3 ViT-S/B, image decoding on the CPU limits throughput and 2 GPUs
+    # measured SLOWER than 1 (x0.76 on 4K JPEGs, x0.40 on 1080p frames,
+    # 2026-09-26) because each GPU worker adds ~10 s of start-up.
+    dt-embed my_dataset --backend huggingface --model facebook/dinov3-vits16-pretrain-lvd1689m --output-field dinov3_emb --gpu 0,1
 """
 
 import logging
@@ -41,8 +48,12 @@ def parse_args(argv=None):
                    help="API endpoint URL (for 'api' backend).")
     p.add_argument("--instruction", default=None,
                    help="Instruction prompt for VLMs (for 'api' backend).")
-    p.add_argument("--gpu", default=None, metavar="ID",
-                   help="GPU device ID to use (e.g. 0, 1). Sets CUDA_VISIBLE_DEVICES.")
+    p.add_argument("--gpu", default=None, metavar="IDS",
+                   help="GPU device ID(s): one (e.g. 0) sets CUDA_VISIBLE_DEVICES; "
+                        "several (e.g. 0,1) split the dataset across them "
+                        "(zoo/huggingface backends only). Several GPUs only pay off "
+                        "when the model, not image decoding, is the bottleneck: "
+                        "with DINOv3 ViT-S/B they measured slower than one.")
     _add_verbosity(p)
     return p.parse_args(argv)
 
@@ -70,8 +81,32 @@ def main(argv=None):
         level = logging.INFO
     logging.basicConfig(level=level, format="%(name)s - %(levelname)s - %(message)s")
 
+    gpus = None
     if args.gpu is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+        from detection_toolkit.embedding.multi_gpu import parse_gpus
+        try:
+            gpus = parse_gpus(args.gpu)
+        except ValueError as err:
+            print(f"Error: {err}", file=sys.stderr)
+            sys.exit(2)
+
+    if gpus and len(gpus) > 1:
+        from detection_toolkit.embedding.multi_gpu import compute_multi_gpu
+
+        dataset = _load_dataset(args.dataset)
+        try:
+            compute_multi_gpu(dataset, args.backend, args.model, args.output_field, gpus,
+                              batch_size=args.batch_size, overwrite=args.overwrite)
+        except ValueError as err:
+            print(f"Error: {err}", file=sys.stderr)
+            sys.exit(2)
+        print(f"Embeddings computed: backend={args.backend}, model={args.model}, GPUs {','.join(gpus)}")
+        print(f"  field: {args.output_field}")
+        print(f"  samples: {len(dataset)}")
+        return
+
+    if gpus:
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpus[0]
 
     from detection_toolkit.embedding import EmbeddingComputer
 

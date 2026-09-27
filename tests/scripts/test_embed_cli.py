@@ -56,3 +56,13 @@ def test_embed_parse_defaults():
     assert args.api_url is None
     assert args.instruction is None
     assert args.batch_size == 32
+
+
+def test_embed_rejects_a_bad_gpu_list_before_touching_the_dataset(capsys):
+    import pytest
+    from detection_toolkit.scripts.embed import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["ds", "--backend", "zoo", "--model", "m", "-o", "f", "--gpu", "0,0"])
+    assert exc.value.code == 2
+    assert "twice" in capsys.readouterr().err
