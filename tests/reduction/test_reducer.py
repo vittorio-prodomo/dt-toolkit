@@ -87,9 +87,11 @@ def test_reduce_handles_none_embeddings():
     stored = ds._stored["reduced"]
     assert stored[2] is None
     assert stored[7] is None
-    # Valid entries are lists
-    assert isinstance(stored[0], list)
-    assert len(stored[0]) == 4
+    # Valid entries are numpy vectors (stored as-is so FiftyOne infers a
+    # VectorField, like embedding fields)
+    assert isinstance(stored[0], np.ndarray)
+    assert stored[0].shape == (4,)
+    np.testing.assert_array_equal(stored[0], result[0])
 
 
 def test_reduce_overwrite_protection():
