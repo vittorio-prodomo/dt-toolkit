@@ -102,6 +102,13 @@ override-dependencies = [
     "fiftyone-brain>=0",
     "voxel51-eta>=0",
 ]
+# graphql-core 3.3 breaks the FiftyOne forks' GraphQL stack.
+constraint-dependencies = ["graphql-core<3.3"]
+# fiftyone + eta in setuptools' "compat" editable mode: a .pth puts each repo
+# root on sys.path, so the forks' real packages beat the fiftyone/ namespace
+# folders that fiftyone-brain and fiftyone-db drop into site-packages (the
+# default editable import hook runs after the path search and loses).
+config-settings-package = { fiftyone = { editable_mode = "compat" }, voxel51-eta = { editable_mode = "compat" } }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/detection_toolkit"]
