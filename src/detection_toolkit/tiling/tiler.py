@@ -6,6 +6,7 @@ and negative-sample control.
 
 import json
 import logging
+import multiprocessing
 import random
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -36,6 +37,25 @@ from .parallel import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _worker_pool(max_workers: int) -> ProcessPoolExecutor:
+    """Return a process pool whose workers are spawned, never forked.
+
+    The workers use pyvips. libvips runs its work on a GLib thread pool, and
+    once this process has done any pyvips work the pool's idle threads are
+    registered in GLib's bookkeeping. A forked child inherits the bookkeeping
+    but not the threads, so its first pyvips call queues work for a thread that
+    does not exist and blocks forever in ``vips_threadpool_run``. Forking is
+    also unsafe once a pymongo (FiftyOne) client exists in the parent.
+    ``spawn`` starts each worker from a fresh interpreter; the task tuples are
+    plain picklable data and the worker functions are importable module-level
+    functions, so nothing else changes.
+    """
+    return ProcessPoolExecutor(
+        max_workers=max_workers,
+        mp_context=multiprocessing.get_context("spawn"),
+    )
 
 
 class DatasetTiler:
@@ -292,7 +312,7 @@ class DatasetTiler:
                     "Tiling %s with %d workers (%d samples)",
                     split_name, num_procs, len(tasks),
                 )
-                with ProcessPoolExecutor(max_workers=num_procs) as pool:
+                with _worker_pool(num_procs) as pool:
                     futures = {
                         pool.submit(tile_single_fo_sample, t): t
                         for t in tasks
@@ -497,7 +517,7 @@ class DatasetTiler:
             logger.info(
                 "Tiling with %d workers (%d images)", num_procs, len(tasks),
             )
-            with ProcessPoolExecutor(max_workers=num_procs) as pool:
+            with _worker_pool(num_procs) as pool:
                 futures = {
                     pool.submit(tile_single_image, t): t for t in tasks
                 }
@@ -591,7 +611,7 @@ class DatasetTiler:
                     "Tiling %s with %d workers (%d images)",
                     split_name, num_procs, len(tasks),
                 )
-                with ProcessPoolExecutor(max_workers=num_procs) as pool:
+                with _worker_pool(num_procs) as pool:
                     futures = {
                         pool.submit(tile_single_yolo_image, t): t
                         for t in tasks
