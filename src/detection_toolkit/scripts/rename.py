@@ -17,6 +17,7 @@ Usage::
 """
 
 import argparse
+import os
 import logging
 import sys
 from pathlib import Path
@@ -24,7 +25,8 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DATASETS_ROOT = Path("/path/to/datasets")
+# Default: $DT_DATASETS_ROOT, else ./datasets (run from the project root).
+DATASETS_ROOT = Path(os.environ.get("DT_DATASETS_ROOT", "datasets"))
 
 
 def main():

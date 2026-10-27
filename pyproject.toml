@@ -91,10 +91,14 @@ Homepage = "https://github.com/vittorio-prodomo/detection-toolkit"
 Issues = "https://github.com/vittorio-prodomo/detection-toolkit/issues"
 
 [tool.uv.sources]
-cocoyolo = { path = "../cocoyolo", editable = true }
-fiftyone = { path = "../fiftyone-fork", editable = true }
-voxel51-eta = { path = "../fiftyone-fork/eta", editable = true }
-fiftyone-brain = { path = "../fiftyone-brain-fork" }
+# Our forks, fetched from GitHub at pinned commits, so this toolkit installs on its own
+# (uv applies these sources for whoever depends on it). The its parent project
+# project overrides them with its local editable checkouts (root pyproject:
+# override-dependencies + path sources). Bump a rev when the fork changes.
+cocoyolo = { git = "https://github.com/vittorio-prodomo/cocoyolo", rev = "600aabc5524a4ec0b5dafbb78f78e702880c7d66" }
+fiftyone = { git = "https://github.com/vittorio-prodomo/fiftyone", rev = "dcb24fac0a297e83624425f92aef36a5c62de04e" }
+voxel51-eta = { git = "https://github.com/vittorio-prodomo/eta", rev = "46eb981821a1d36dd5c17efd74afc0949c631c10" }
+fiftyone-brain = { git = "https://github.com/vittorio-prodomo/fiftyone-brain", rev = "f49cac2b2e379d7d1f644f98e43967a30c408885" }
 
 [tool.uv]
 override-dependencies = [

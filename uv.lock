@@ -20,8 +20,8 @@ resolution-markers = [
 [manifest]
 constraints = [{ name = "graphql-core", specifier = "<3.3" }]
 overrides = [
-    { name = "fiftyone-brain", directory = "../fiftyone-brain-fork" },
-    { name = "voxel51-eta", editable = "../fiftyone-fork/eta" },
+    { name = "fiftyone-brain", git = "https://github.com/vittorio-prodomo/fiftyone-brain?rev=f49cac2b2e379d7d1f644f98e43967a30c408885" },
+    { name = "voxel51-eta", git = "https://github.com/vittorio-prodomo/eta?rev=46eb981821a1d36dd5c17efd74afc0949c631c10" },
 ]
 
 [[package]]
@@ -614,7 +614,7 @@ wheels = [
 [[package]]
 name = "cocoyolo"
 version = "0.1.0"
-source = { editable = "../cocoyolo" }
+source = { git = "https://github.com/vittorio-prodomo/cocoyolo?rev=600aabc5524a4ec0b5dafbb78f78e702880c7d66#600aabc5524a4ec0b5dafbb78f78e702880c7d66" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -623,20 +623,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tqdm" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy" },
-    { name = "opencv-python-headless", specifier = ">=4.5" },
-    { name = "pycocotools", specifier = ">=2.0" },
-    { name = "pyvips", marker = "extra == 'fast'" },
-    { name = "pyyaml", specifier = ">=5.0" },
-    { name = "tqdm" },
-]
-provides-extras = ["fast"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=7" }]
 
 [[package]]
 name = "colorama"
@@ -1010,11 +996,11 @@ reduce = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cocoyolo", editable = "../cocoyolo" },
+    { name = "cocoyolo", git = "https://github.com/vittorio-prodomo/cocoyolo?rev=600aabc5524a4ec0b5dafbb78f78e702880c7d66" },
     { name = "cvat-sdk", specifier = "==2.74.0" },
     { name = "detection-toolkit", extras = ["fiftyone", "embed", "reduce", "cluster"], marker = "extra == 'all'" },
-    { name = "fiftyone", marker = "extra == 'fiftyone'", editable = "../fiftyone-fork" },
-    { name = "fiftyone-brain", marker = "extra == 'fiftyone'", directory = "../fiftyone-brain-fork" },
+    { name = "fiftyone", marker = "extra == 'fiftyone'", git = "https://github.com/vittorio-prodomo/fiftyone?rev=dcb24fac0a297e83624425f92aef36a5c62de04e" },
+    { name = "fiftyone-brain", marker = "extra == 'fiftyone'", git = "https://github.com/vittorio-prodomo/fiftyone-brain?rev=f49cac2b2e379d7d1f644f98e43967a30c408885" },
     { name = "numpy" },
     { name = "opencv-python-headless", specifier = ">=4.5" },
     { name = "pacmap", marker = "extra == 'reduce'" },
@@ -1028,7 +1014,7 @@ requires-dist = [
     { name = "tqdm" },
     { name = "transformers", marker = "extra == 'embed'" },
     { name = "umap-learn", marker = "extra == 'reduce'" },
-    { name = "voxel51-eta", marker = "extra == 'fiftyone'", editable = "../fiftyone-fork/eta" },
+    { name = "voxel51-eta", marker = "extra == 'fiftyone'", git = "https://github.com/vittorio-prodomo/eta?rev=46eb981821a1d36dd5c17efd74afc0949c631c10" },
 ]
 provides-extras = ["fiftyone", "reduce", "cluster", "embed", "all"]
 
@@ -1092,7 +1078,7 @@ wheels = [
 [[package]]
 name = "fiftyone"
 version = "1.23.0"
-source = { editable = "../fiftyone-fork" }
+source = { git = "https://github.com/vittorio-prodomo/fiftyone?rev=dcb24fac0a297e83624425f92aef36a5c62de04e#dcb24fac0a297e83624425f92aef36a5c62de04e" }
 dependencies = [
     { name = "aiofiles" },
     { name = "argcomplete" },
@@ -1151,66 +1137,10 @@ dependencies = [
     { name = "xmltodict" },
 ]
 
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=20,<26" },
-    { name = "argcomplete", specifier = ">=2,<4" },
-    { name = "async-lru", specifier = ">=2,<3" },
-    { name = "beautifulsoup4", specifier = ">=2,<5" },
-    { name = "boto3", specifier = ">=1,<2" },
-    { name = "cachetools", specifier = ">=5,<8" },
-    { name = "dacite", specifier = ">=1.6.0,<2" },
-    { name = "deprecated" },
-    { name = "dill", specifier = ">=0.1,<0.5" },
-    { name = "exceptiongroup", specifier = ">=1,<2" },
-    { name = "fiftyone", extras = ["multimodal-mcap"], marker = "extra == 'multimodal'" },
-    { name = "fiftyone-brain", specifier = ">=0.25.0,<0.26" },
-    { name = "fiftyone-db", specifier = ">=0.4,<2.0" },
-    { name = "ftfy", specifier = ">=4,<7" },
-    { name = "graphql-core", specifier = ">=3.2,<3.3" },
-    { name = "humanize", specifier = ">=2,<5" },
-    { name = "hypercorn", specifier = ">=0.13.2,<0.19" },
-    { name = "jinja2", specifier = ">=3,<4" },
-    { name = "jsonpatch", specifier = ">=1,<2" },
-    { name = "matplotlib", specifier = "<4" },
-    { name = "mongoengine", specifier = "~=0.29.1" },
-    { name = "motor", specifier = "~=3.6.0" },
-    { name = "numpy", specifier = "<3" },
-    { name = "opencv-python-headless", specifier = "<5" },
-    { name = "packaging" },
-    { name = "pandas", specifier = "<4" },
-    { name = "pillow", specifier = ">=12.2" },
-    { name = "plotly", specifier = ">=6.1.1,<7" },
-    { name = "pprintpp", specifier = ">=0.1,<0.5" },
-    { name = "protobuf", marker = "extra == 'multimodal-mcap'", specifier = "==6.33.6" },
-    { name = "psutil", specifier = ">=5,<8" },
-    { name = "pydash", specifier = ">=6,<9" },
-    { name = "pymongo", specifier = "~=4.9.2" },
-    { name = "pypcd4", specifier = ">=1.4,<2" },
-    { name = "pytz" },
-    { name = "pyyaml", specifier = ">=4,<7" },
-    { name = "regex" },
-    { name = "retrying", specifier = ">=1,<2" },
-    { name = "rtree", specifier = "<2" },
-    { name = "scikit-image", specifier = "<1" },
-    { name = "scikit-learn", specifier = "<2" },
-    { name = "scipy", specifier = "<2" },
-    { name = "setuptools" },
-    { name = "sse-starlette", specifier = ">=0.10.3,<4" },
-    { name = "sseclient-py", specifier = ">=1.7.2,<2" },
-    { name = "starlette", specifier = ">=1.3.1,<1.4" },
-    { name = "strawberry-graphql", specifier = ">=0.315.7,<0.317.0" },
-    { name = "tabulate", specifier = ">=0.7,<0.11" },
-    { name = "tqdm", specifier = ">=2,<5" },
-    { name = "universal-analytics-python3", specifier = ">=1.0.1,<2" },
-    { name = "voxel51-eta", specifier = ">=0.17,<0.18" },
-    { name = "xmltodict", specifier = ">=1,<2" },
-]
-provides-extras = ["multimodal-mcap", "multimodal"]
-
 [[package]]
 name = "fiftyone-brain"
-source = { directory = "../fiftyone-brain-fork" }
+version = "1.0.0.dev0"
+source = { git = "https://github.com/vittorio-prodomo/fiftyone-brain?rev=f49cac2b2e379d7d1f644f98e43967a30c408885#f49cac2b2e379d7d1f644f98e43967a30c408885" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1219,21 +1149,6 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'dev'" },
-    { name = "imageio", marker = "extra == 'dev'" },
-    { name = "numpy" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pylint", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "scikit-learn" },
-    { name = "scipy", specifier = ">=1.2.0" },
-    { name = "voxel51-eta", extras = ["storage"], marker = "extra == 'dev'" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "fiftyone-db"
@@ -4578,7 +4493,8 @@ wheels = [
 
 [[package]]
 name = "voxel51-eta"
-source = { editable = "../fiftyone-fork/eta" }
+version = "0.18.0"
+source = { git = "https://github.com/vittorio-prodomo/eta?rev=46eb981821a1d36dd5c17efd74afc0949c631c10#46eb981821a1d36dd5c17efd74afc0949c631c10" }
 dependencies = [
     { name = "argcomplete" },
     { name = "dill" },
@@ -4603,49 +4519,6 @@ dependencies = [
     { name = "tzlocal" },
     { name = "urllib3" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "argcomplete" },
-    { name = "azure-identity", marker = "extra == 'storage'" },
-    { name = "azure-storage-blob", marker = "extra == 'storage'", specifier = ">=12.4.0" },
-    { name = "black", marker = "extra == 'dev'" },
-    { name = "blockdiag", marker = "extra == 'pipeline'" },
-    { name = "boto3", marker = "extra == 'storage'", specifier = ">=1.15" },
-    { name = "dill" },
-    { name = "glob2" },
-    { name = "google-api-python-client", marker = "extra == 'storage'" },
-    { name = "google-cloud-storage", marker = "extra == 'storage'", specifier = ">=1.36" },
-    { name = "httplib2", marker = "extra == 'storage'" },
-    { name = "jsonlines" },
-    { name = "numpy" },
-    { name = "opencv-python-headless", specifier = ">=4.1,<5" },
-    { name = "packaging" },
-    { name = "paramiko", specifier = ">=3,<6" },
-    { name = "paramiko", marker = "extra == 'storage'" },
-    { name = "pillow", specifier = ">=6.2" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "py7zr" },
-    { name = "pylint", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "python-dateutil" },
-    { name = "pytz" },
-    { name = "rarfile" },
-    { name = "requests" },
-    { name = "retrying" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "scikit-image" },
-    { name = "sortedcontainers" },
-    { name = "sphinx", marker = "extra == 'dev'" },
-    { name = "sphinx", marker = "extra == 'pipeline'" },
-    { name = "sphinx-rtd-theme", marker = "extra == 'dev'" },
-    { name = "sphinxcontrib-napoleon", marker = "extra == 'dev'" },
-    { name = "sphinxcontrib-napoleon", marker = "extra == 'pipeline'" },
-    { name = "tabulate" },
-    { name = "tzlocal" },
-    { name = "urllib3" },
-]
-provides-extras = ["dev", "pipeline", "storage"]
 
 [[package]]
 name = "wcwidth"

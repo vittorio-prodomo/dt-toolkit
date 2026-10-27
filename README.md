@@ -11,6 +11,42 @@ pip install -e ".[train]"       # + Ultralytics training
 pip install -e ".[all]"         # everything
 ```
 
+## Using it in another project
+
+This toolkit is not tied to its parent project (the project it grew up in). From
+any [uv](https://docs.astral.sh/uv/) project:
+
+```toml
+[project]
+dependencies = ["detection-toolkit[all]"]
+
+[tool.uv.sources]
+detection-toolkit = { git = "https://github.com/vittorio-prodomo/detection-toolkit", tag = "v0.1.0" }
+```
+
+The toolkit's own `[tool.uv.sources]` pull **our forks** (cocoyolo, fiftyone, eta, fiftyone-brain) from GitHub at pinned
+commits — uv applies a dependency's sources for you (verified 2026-10-27), together
+with the CUDA 12.8 PyTorch index where it applies. Plain `pip` ignores those sources and
+would install the upstream packages, without our patches: use uv.
+
+With the **FiftyOne** extra, add the overrides our FiftyOne forks need (their version
+numbers don't satisfy upstream's pins; overrides are never inherited, so the consuming
+project must declare them):
+
+```toml
+[tool.uv]
+override-dependencies = ["fiftyone-brain>=0", "voxel51-eta>=0"]
+constraint-dependencies = ["graphql-core<3.3"]
+
+[tool.uv.sources]
+voxel51-eta = { git = "https://github.com/vittorio-prodomo/eta", rev = "46eb981821a1d36dd5c17efd74afc0949c631c10" }
+fiftyone-brain = { git = "https://github.com/vittorio-prodomo/fiftyone-brain", rev = "f49cac2b2e379d7d1f644f98e43967a30c408885" }
+```
+
+To develop against a **local checkout** of a fork instead (what its parent project
+does), list the package in `override-dependencies` and give it a `path` source — a path
+source alone is ignored for a package that only arrives through this toolkit.
+
 ## CLI cheat sheet
 
 After installation the following commands are available.
