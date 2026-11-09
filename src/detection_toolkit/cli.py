@@ -4,15 +4,15 @@ import argparse
 import os
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-
-def _load_dotenv(path=_PROJECT_ROOT / ".env"):
-    """Load KEY=VALUE pairs from *path* into ``os.environ``.
+def _load_dotenv(path=None):
+    """Load KEY=VALUE pairs from *path* (default: ``.env`` in the current directory) into ``os.environ``.
 
     Already-set environment variables take precedence (they are never
     overwritten).  Missing file is silently ignored.
     """
+    if path is None:
+        path = Path.cwd() / ".env"
     try:
         text = path.read_text()
     except FileNotFoundError:

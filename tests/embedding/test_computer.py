@@ -116,7 +116,7 @@ def test_compute_invalid_backend():
 
 def test_compute_huggingface_backend(monkeypatch):
     """HuggingFace backend loads model and calls compute_embeddings."""
-    import transformers
+    transformers = pytest.importorskip("transformers")  # optional: the `embed` extra
 
     from detection_toolkit.embedding import EmbeddingComputer
 

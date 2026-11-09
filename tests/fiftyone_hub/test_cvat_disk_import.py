@@ -3,6 +3,11 @@
 import textwrap
 from pathlib import Path
 
+import pytest
+
+# Every test here builds a FiftyOne dataset, so it needs a reachable MongoDB.
+pytestmark = pytest.mark.requires_mongod
+
 
 def _make_cvat_dataset(tmp_path, subset=None):
     """Create a minimal CVAT Image dataset on disk.

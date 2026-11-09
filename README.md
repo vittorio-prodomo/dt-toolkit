@@ -1,171 +1,100 @@
-# detection-toolkit
+# dt-toolkit
 
-Modular building blocks for object-detection & instance-segmentation workflows.
+Command-line building blocks for **object-detection and instance-segmentation datasets**: inspect, convert, tile,
+filter, merge and split them, move them in and out of [FiftyOne](https://github.com/voxel51/fiftyone) and
+[CVAT](https://github.com/cvat-ai/cvat), and compute embeddings, projections and clusters for curation.
 
-## Installation
+It grew out of day-to-day work on large drone and robot image collections, where the stock tools kept falling short:
+tiling that loses holes and multi-part masks, conversions that split one object into several, CVAT jobs that cannot be
+re-cut, datasets that are hard to rename once FiftyOne points at them.
+
+**Highlights**
+
+- **Topology-preserving tiling** (`dt-tile`). Polygons are clipped per tile with Shapely. Holes and parts that the tile
+  boundary splits are kept on one instance (bridged), not dropped or filled. Decoding uses pyvips, and tiling runs in
+  parallel.
+- **YOLO ↔ COCO conversion that keeps holes and multi-part masks on one instance** (`dt-convert`), built on
+  [`cocoyolo`](https://github.com/vittorio-prodomo/cocoyolo).
+- **Class surgery and dataset merging** with remapping (`dt-filter`, `dt-merge`).
+- **FiftyOne bridges** (`dt-import-fo`, `dt-export-fo`, `dt-enrich`, `dt-thumbnails`, `dt-rename`) and **CVAT job
+  splitting** (`dt-cvat`).
+- **Embedding workflows** (`dt-embed`, `dt-reduce`, `dt-cluster`, `dt-visualize`): FiftyOne zoo, Hugging Face or any
+  OpenAI-compatible embedding API, with multi-GPU sharding; UMAP, PaCMAP or PCA projections; clustering.
+- **Stratified, group-aware splits** (`dt-split`), so that frames of the same capture never straddle train and val.
+
+## Install
+
+Use [uv](https://docs.astral.sh/uv/). The FiftyOne extra relies on patched forks pinned in `pyproject.toml`; uv
+applies those sources for you, plain `pip` does not.
 
 ```bash
-pip install -e .                # core only
-pip install -e ".[fiftyone]"    # + FiftyOne integration
-pip install -e ".[train]"       # + Ultralytics training
-pip install -e ".[all]"         # everything
+git clone https://github.com/vittorio-prodomo/dt-toolkit && cd dt-toolkit
+uv sync --extra fiftyone            # core + FiftyOne integration
+uv sync --all-extras                # everything (adds torch/transformers, UMAP/PaCMAP, scikit-learn)
 ```
 
-## Using it in another project
-
-This toolkit is not tied to its parent project (the project it grew up in). From
-any [uv](https://docs.astral.sh/uv/) project:
+As a dependency of another uv project:
 
 ```toml
 [project]
-dependencies = ["detection-toolkit[all]"]
+dependencies = ["detection-toolkit[fiftyone]"]
 
 [tool.uv.sources]
-detection-toolkit = { git = "https://github.com/vittorio-prodomo/detection-toolkit", tag = "v0.1.0" }
-```
+detection-toolkit = { git = "https://github.com/vittorio-prodomo/dt-toolkit", tag = "v0.1.0" }
 
-The toolkit's own `[tool.uv.sources]` pull **our forks** (cocoyolo, fiftyone, eta, fiftyone-brain) from GitHub at pinned
-commits — uv applies a dependency's sources for you (verified 2026-10-27), together
-with the CUDA 12.8 PyTorch index where it applies. Plain `pip` ignores those sources and
-would install the upstream packages, without our patches: use uv.
-
-With the **FiftyOne** extra, add the overrides our FiftyOne forks need (their version
-numbers don't satisfy upstream's pins; overrides are never inherited, so the consuming
-project must declare them):
-
-```toml
+# needed with the fiftyone extra: the forks' version numbers don't satisfy upstream pins
 [tool.uv]
 override-dependencies = ["fiftyone-brain>=0", "voxel51-eta>=0"]
 constraint-dependencies = ["graphql-core<3.3"]
-
-[tool.uv.sources]
-voxel51-eta = { git = "https://github.com/vittorio-prodomo/eta", rev = "46eb981821a1d36dd5c17efd74afc0949c631c10" }
-fiftyone-brain = { git = "https://github.com/vittorio-prodomo/fiftyone-brain", rev = "f49cac2b2e379d7d1f644f98e43967a30c408885" }
 ```
 
-To develop against a **local checkout** of a fork instead (what its parent project
-does), list the package in `override-dependencies` and give it a `path` source — a path
-source alone is ignored for a package that only arrives through this toolkit.
+Requirements: Python ≥ 3.10 and the libvips system library (`apt install libvips` / `brew install vips`).
 
-## CLI cheat sheet
-
-After installation the following commands are available.
-Run any command with `--help` (or `-h`) for full usage details.
-
-### Inspect a dataset
+## Quickstart
 
 ```bash
-dt-ingest datasets/my_ds                  # auto-detect format
-dt-ingest datasets/my_ds -f yolo          # force YOLO
+dt-ingest datasets/my_ds                           # detect the format, print splits, classes, counts
+dt-convert datasets/coco_ds out/yolo_ds -t yolo    # COCO -> YOLO (holes and parts stay on one instance)
+dt-tile datasets/my_ds out/tiled -t 640 -o 0.3     # 640 px tiles with 30% overlap
+dt-import-fo disk out/tiled my_tiles -f yolo       # browse the result in FiftyOne
 ```
 
-### Convert between formats
+Every command has `--help`.
 
-```bash
-dt-convert datasets/coco_ds out/yolo_ds -t yolo
-dt-convert datasets/yolo_ds out/coco_ds -t coco
-```
+## Commands
 
-### Tile into fixed-size patches
-
-```bash
-dt-tile datasets/ds out/tiled -t 640 -o 0.3
-dt-tile datasets/ds out/tiled -c tiling_config.yaml
-
-# Tile unlabeled images (auto-detected, preserves directory structure)
-dt-tile images/ out/tiled -t 640
-
-# Tile unlabeled images with flattened output
-dt-tile images/ out/tiled -t 640 --flatten
-```
-
-### Filter or merge classes
-
-```bash
-dt-filter datasets/ds out/filtered -a keep  -c crack spall
-dt-filter datasets/ds out/filtered -a remove -c efflorescence
-dt-filter datasets/ds out/merged   -m crack=mild_crack,splitting_crack
-```
-
-### Merge multiple datasets
-
-```bash
-dt-merge out/merged -d datasets/ds_a datasets/ds_b -c merge_config.yaml
-dt-merge out/merged -d datasets/ds_a datasets/ds_b \
-    -m crack=mild_crack,splitting_crack -m spall=mechanical_spall,spall
-```
-
-### Train a model
-
-```bash
-dt-train -m yolo11m-seg -d datasets/crack-seg -e 200 -b 16 -i 640
-dt-train -m rf-detr-base -d datasets/coco_ds -f coco -e 100
-dt-train -C training_config.yaml
-```
-
-### FiftyOne integration
-
-```bash
-# Import from disk
-dt-import-fo disk datasets/my_ds my_dataset -f yolo
-
-# Import from disk and enrich labels with computed attributes
-dt-import-fo disk datasets/my_ds my_dataset --enrich
-
-# Import from CVAT
-dt-import-fo cvat my_dataset -P "My CVAT Project"
-
-# Export to disk
-dt-export-fo my_dataset out/exported -t yolo -s train val
-```
-
-### CVAT task management
-
-```bash
-# Split a task's single job into two jobs at frame 250
-dt-cvat split --task 41 --cuts 250
-
-# Split into 3 roughly equal jobs
-dt-cvat split --task 41 --equal 3
-
-# Multiple custom cut points (produces 3 jobs: 0-99, 100-299, 300-end)
-dt-cvat split --task 41 --cuts 100 300
-
-# Split a specific job in a multi-job task
-dt-cvat split --task 41 --job 54 --cuts 250
-
-# Preview the split without creating anything
-dt-cvat split --task 41 --cuts 250 --dry-run
-```
-
-CVAT credentials are read from `DT_CVAT_*` env vars in `.env`
-(see `.env.example`) or passed via `--url`, `--username`, `--password`,
-`--organization`.
-
-### Enrich a FiftyOne dataset
-
-```bash
-# Compute label areas (auto-detects label fields)
-dt-enrich my_dataset
-
-# Target specific label fields
-dt-enrich my_dataset -l detections -l segmentations
-
-# Adjust batch size for large mask-heavy datasets
-dt-enrich my_dataset -b 500
-```
-
-### Quick reference
-
-| Command | Description | Extras required |
+| Command | What it does | Extra |
 |---|---|---|
-| `dt-ingest` | Ingest a dataset and display its metadata | — |
-| `dt-convert` | Convert between YOLO and COCO formats | — |
-| `dt-tile` | Tile a dataset into fixed-size patches | — |
-| `dt-filter` | Filter or merge classes within a dataset | — |
-| `dt-merge` | Merge multiple datasets with class remapping | — |
-| `dt-train` | Train a model (auto-detected backend) | `.[train]` / `.[train-detectron2]` / `.[train-rfdetr]` |
-| `dt-import-fo` | Import a dataset into FiftyOne (disk or CVAT) | `.[fiftyone]` |
-| `dt-export-fo` | Export a FiftyOne dataset to disk | `.[fiftyone]` |
-| `dt-enrich` | Compute derived label attributes (area) | `.[fiftyone]` |
-| `dt-cvat` | CVAT task management (split jobs) | `cvat-sdk` |
+| `dt-ingest` | Detect a dataset's format and layout; print splits, classes and counts | — |
+| `dt-convert` | Convert between YOLO and COCO (detection and segmentation) | — |
+| `dt-tile` | Tile images and labels into fixed-size patches; also unlabeled image folders | — |
+| `dt-filter` | Keep, remove or merge classes inside one dataset | — |
+| `dt-merge` | Merge several datasets with class remapping | — |
+| `dt-cvat` | CVAT task management: split a job at given frames or into N equal jobs | — |
+| `dt-import-fo` | Import into FiftyOne from disk (YOLO / COCO / CVAT / plain images) or from CVAT | `fiftyone` |
+| `dt-export-fo` | Export a FiftyOne dataset to YOLO or COCO | `fiftyone` |
+| `dt-enrich` | Add label areas and EXIF GPS (with a map view) to a FiftyOne dataset | `fiftyone` |
+| `dt-thumbnails` | Generate or audit thumbnails for a FiftyOne dataset | `fiftyone` |
+| `dt-rename` | Rename a FiftyOne dataset and its directory on disk atomically | `fiftyone` |
+| `dt-split` | Stratified train/val/test split, optionally keeping groups together | `fiftyone` |
+| `dt-embed` | Compute embeddings (zoo / Hugging Face / OpenAI-compatible API), multi-GPU | `fiftyone`, `embed` |
+| `dt-reduce` | Dimensionality reduction of stored embeddings (UMAP, PaCMAP, PCA) | `fiftyone`, `reduce` |
+| `dt-cluster` | Cluster stored embeddings | `fiftyone`, `cluster` |
+| `dt-visualize` | Build a FiftyOne embeddings visualization | `fiftyone` |
+
+CVAT credentials come from `DT_CVAT_*` environment variables or a `.env` file in the current directory (see
+`.env.example`), or from `--url`, `--username`, `--password` and `--organization`.
+
+## Development
+
+```bash
+uv sync --all-extras --group dev
+uv run pytest
+```
+
+Tests that need MongoDB skip themselves when no database answers at `FIFTYONE_DATABASE_URI` (default
+`localhost:27017`); the multi-GPU embedding test is opt-in (`DT_EMBED_GPU_TESTS=1`).
+
+## License
+
+MIT, see [LICENSE](LICENSE). The FiftyOne forks it installs are Apache-2.0.
